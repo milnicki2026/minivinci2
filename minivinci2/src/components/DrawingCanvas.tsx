@@ -80,9 +80,26 @@ export const DrawingCanvas = ({ pageId, initialImage }: DrawingCanvasProps) => {
 
     const img = new Image();
     img.onload = () => {
-      ctx.fillStyle = "#fdfcf8";
+      ctx.fillStyle = "#000000";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      const imgAspect = img.width / img.height;
+      const canvasAspect = canvas.width / canvas.height;
+      let drawWidth, drawHeight, drawX, drawY;
+
+      if (imgAspect > canvasAspect) {
+        drawWidth = canvas.width;
+        drawHeight = canvas.width / imgAspect;
+        drawX = 0;
+        drawY = (canvas.height - drawHeight) / 2;
+      } else {
+        drawHeight = canvas.height;
+        drawWidth = canvas.height * imgAspect;
+        drawX = (canvas.width - drawWidth) / 2;
+        drawY = 0;
+      }
+
+      ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
       const dataUrl = canvas.toDataURL();
       setHistory([dataUrl]);
       setHistoryStep(0);
