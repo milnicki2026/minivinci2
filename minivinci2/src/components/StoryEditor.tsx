@@ -12,10 +12,10 @@ interface StoryPage {
   text: string;
   drawing?: string;
 }
-export const StoryEditor = () => {
+export const StoryEditor = ({ initialStory }: { initialStory?: string }) => {
   const [pages, setPages] = useState<StoryPage[]>([{
     id: "1",
-    text: "",
+    text: initialStory || "",
     drawing: undefined
   }]);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
