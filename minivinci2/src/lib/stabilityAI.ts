@@ -7,14 +7,13 @@ export async function generateImage(storyText: string): Promise<string> {
   const p = await extractImageParams(storyText);
 
   const prompt = [
-    "A flat lay photograph of an open minimalist children's board book spread.",
-    `The left page is a solid ${p.primaryAccent} background with a darker watercolor wash texture.`,
-    `On the left, a small graphic silhouette of three ${p.subjectPlural} walks.`,
-    `On the right, textured cream paper with large watercolor wash of a ${p.secondaryAccent} ${p.secondarySubject}.`,
-    `Next to the wash, a large, detailed black ink outline drawing of a ${p.subjectSingular}'s head.`,
-    "Subtle parallel lines connect the two pages.",
-    `Text in a clean sans-serif font: Left: '${p.caption1}', Right: '${p.caption2}'.`,
-    "A small physical die-cut hole is on the left page. Visible paper texture.",
+    "A minimalist children's book illustration, single page, flat graphic style.",
+    `Solid ${p.primaryAccent} background with subtle watercolor wash texture.`,
+    `A large watercolor wash of ${p.secondaryAccent} fills the center, depicting a ${p.secondarySubject}.`,
+    `A bold black ink outline illustration of a ${p.subjectSingular} in the foreground.`,
+    `Small graphic silhouettes of three ${p.subjectPlural} along the bottom edge.`,
+    `Text in a clean sans-serif font: '${p.caption1}' and '${p.caption2}'.`,
+    "Visible paper texture. No book, no frame, no border, no photograph.",
   ].join(" ");
 
   const formData = new FormData();
