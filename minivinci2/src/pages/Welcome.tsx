@@ -22,7 +22,7 @@ const Welcome = () => {
           <h1 className="text-4xl mb-2 font-extrabold md:text-5xl text-foreground">Welcome to minivinci</h1>
           
 
-          <p className="text-xl md:text-2xl text-foreground/80 leading-relaxed">THIS IS AN AI GENERATED CHANGE TO THE EXPERIENCE.</p>
+          <p className="text-xl md:text-2xl text-foreground/80 leading-relaxed">Let's make some magic! Write, illustrate, and share your wonderful stories with minivinci. Let your imagination run wild!</p>
 
           {/* Features */}
           <div className="grid md:grid-cols-2 gap-4 mt-8 mb-8">
