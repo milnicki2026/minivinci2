@@ -3,8 +3,10 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { DrawingCanvas } from "./DrawingCanvas";
-import { BookOpen, Palette, ChevronLeft, ChevronRight, Plus, Eye, Printer } from "lucide-react";
+import { BookOpen, Palette, ChevronLeft, ChevronRight, Plus, Eye, Printer, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { generateImage } from "@/lib/stabilityAI";
+import { toast } from "sonner";
 interface StoryPage {
   id: string;
   text: string;
@@ -20,6 +22,7 @@ export const StoryEditor = () => {
   const [storyTitle, setStoryTitle] = useState("My Amazing Story");
   const [mode, setMode] = useState<"write" | "draw">("write");
   const [isPreview, setIsPreview] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const currentPage = pages[currentPageIndex];
   const updatePageText = (text: string) => {
     const newPages = [...pages];
@@ -48,6 +51,29 @@ export const StoryEditor = () => {
       setCurrentPageIndex(currentPageIndex - 1);
     }
   };
+  const updatePageDrawing = (drawing: string) => {
+    const newPages = [...pages];
+    newPages[currentPageIndex] = { ...currentPage, drawing };
+    setPages(newPages);
+  };
+
+  const handleGenerateIllustration = async () => {
+    if (!currentPage.text.trim()) {
+      toast.error("Write something first so the AI knows what to draw!");
+      return;
+    }
+    setIsGenerating(true);
+    try {
+      const imageUrl = await generateImage(currentPage.text);
+      updatePageDrawing(imageUrl);
+      toast.success("Illustration generated!");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to generate illustration");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   const handlePrint = () => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
@@ -100,6 +126,21 @@ export const StoryEditor = () => {
                     Page {currentPageIndex + 1} of {pages.length}
                   </div>
                   <Textarea value={currentPage.text} onChange={e => updatePageText(e.target.value)} placeholder="Once upon a time..." className="min-h-[400px] text-lg border-2 border-border rounded-2xl resize-none focus-visible:ring-2 focus-visible:ring-primary" />
+                  <Button
+                    onClick={handleGenerateIllustration}
+                    disabled={isGenerating || !currentPage.text.trim()}
+                    className="bg-violet-500 hover:bg-violet-600 text-white rounded-full px-6"
+                  >
+                    {isGenerating
+                      ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" />Generating...</>
+                      : <><Sparkles className="mr-2 h-5 w-5" />Generate Illustration</>
+                    }
+                  </Button>
+                  {currentPage.drawing && (
+                    <div className="rounded-2xl overflow-hidden border-2 border-violet-200">
+                      <img src={currentPage.drawing} alt="AI-generated illustration" className="w-full" />
+                    </div>
+                  )}
                 </div> : <DrawingCanvas pageId={currentPage.id} />}
             </div>
 
