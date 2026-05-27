@@ -7,26 +7,37 @@ import { generateStory } from "@/lib/claudeAI";
 import { toast } from "sonner";
 import logo from "@/assets/logo.jpeg";
 
-const SETTINGS = [
+const ALL_SETTINGS = [
   { id: "forest", label: "Enchanted Forest", emoji: "🌲" },
   { id: "ocean", label: "Underwater Kingdom", emoji: "🌊" },
   { id: "space", label: "Outer Space", emoji: "🚀" },
+  { id: "castle", label: "Magical Castle", emoji: "🏰" },
+  { id: "volcano", label: "Volcano Island", emoji: "🌋" },
+  { id: "mountains", label: "Snowy Mountains", emoji: "🏔️" },
+  { id: "desert", label: "Desert Oasis", emoji: "🌵" },
+  { id: "mushroom", label: "Mushroom Village", emoji: "🍄" },
+  { id: "clouds", label: "Cloud City", emoji: "☁️" },
 ];
 
-const CHARACTER_NAMES = [
-  "Pip the Puma",
-  "Patty the Plumber",
-  "Silly Sam",
-  "Luna the Lighthouse Keeper",
-  "Jasper the Juggling Giant",
-  "Zara the Zebra Whisperer",
-  "Finn the Fearless Frog",
-  "Cleo the Cloud Painter",
-  "Brix the Brave Builder",
-  "Nola the Noisy Napper",
+const ALL_CHARACTER_NAMES = [
+  "Pip the Puma", "Patty the Plumber", "Silly Sam",
+  "Luna the Lighthouse Keeper", "Jasper the Juggling Giant",
+  "Zara the Zebra Whisperer", "Finn the Fearless Frog",
+  "Cleo the Cloud Painter", "Brix the Brave Builder",
+  "Nola the Noisy Napper", "Rex the Racing Robot",
+  "Bella the Bubble Blower", "Duke the Dizzy Dragon",
+  "Mia the Magic Baker", "Gus the Grumpy Ghost",
+  "Rosie the Rocket Rider", "Theo the Tiny Thunder",
+  "Winnie the Wobbly Wizard", "Axel the Acorn Collector",
+  "Pearl the Pirate Penguin", "Hugo the Helpful Hippo",
+  "Dot the Dancing Dinosaur", "Kiki the Kite Flier",
+  "Otto the Obstacle Octopus", "Sage the Sleepy Scientist",
+  "Pepper the Pogo Champion", "Clover the Clumsy Clown",
+  "Bash the Bouncy Bear", "Fern the Forgetful Fairy",
+  "Iggy the Invisible Iguana",
 ];
 
-const GENRES = [
+const ALL_GENRES = [
   { id: "adventure", label: "Magical Adventure", emoji: "🌟" },
   { id: "comedy", label: "Silly Comedy", emoji: "🤣" },
   { id: "mystery", label: "Mystery", emoji: "🔍" },
@@ -37,10 +48,29 @@ const GENRES = [
   { id: "time-travel", label: "Time Travel", emoji: "⏰" },
   { id: "treasure", label: "Treasure Hunt", emoji: "💎" },
   { id: "monsters", label: "Monster Friendship", emoji: "👾" },
+  { id: "rainbow", label: "Rainbow Quest", emoji: "🌈" },
+  { id: "circus", label: "Circus Adventure", emoji: "🎪" },
+  { id: "robots", label: "Robot Friends", emoji: "🤖" },
+  { id: "science", label: "Mad Science", emoji: "🧪" },
+  { id: "music", label: "Musical Journey", emoji: "🎵" },
+  { id: "pirates", label: "Pirate Voyage", emoji: "🏴‍☠️" },
+  { id: "dinosaurs", label: "Dinosaur Discovery", emoji: "🦕" },
+  { id: "dreams", label: "Dream World", emoji: "🌙" },
+  { id: "food", label: "Food Fight", emoji: "🍕" },
+  { id: "nature", label: "Nature Rescue", emoji: "🌿" },
 ];
+
+function shuffle<T>(arr: T[]): T[] {
+  return [...arr].sort(() => Math.random() - 0.5);
+}
 
 const StorySetup = () => {
   const navigate = useNavigate();
+  const [{ settings, characters, genres }] = useState(() => ({
+    settings: shuffle(ALL_SETTINGS).slice(0, 3),
+    characters: shuffle(ALL_CHARACTER_NAMES).slice(0, 10),
+    genres: shuffle(ALL_GENRES).slice(0, 10),
+  }));
   const [selectedSetting, setSelectedSetting] = useState<string | null>(null);
   const [selectedNames, setSelectedNames] = useState<string[]>([]);
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
@@ -60,8 +90,8 @@ const StorySetup = () => {
     if (!canGenerate) return;
     setIsGenerating(true);
     try {
-      const setting = SETTINGS.find(s => s.id === selectedSetting)!.label;
-      const genre = GENRES.find(g => g.id === selectedGenre)!.label;
+      const setting = settings.find(s => s.id === selectedSetting)!.label;
+      const genre = genres.find(g => g.id === selectedGenre)!.label;
       const story = await generateStory(setting, selectedNames, genre);
       navigate("/create", { state: { story } });
     } catch (err) {
@@ -96,7 +126,7 @@ const StorySetup = () => {
             Where does your story take place?
           </h2>
           <div className="grid grid-cols-3 gap-4">
-            {SETTINGS.map(setting => (
+            {settings.map(setting => (
               <button
                 key={setting.id}
                 onClick={() => setSelectedSetting(setting.id)}
@@ -124,7 +154,7 @@ const StorySetup = () => {
             </span>
           </h2>
           <div className="flex flex-wrap gap-3">
-            {CHARACTER_NAMES.map(name => {
+            {characters.map(name => {
               const isSelected = selectedNames.includes(name);
               const isDisabled = !isSelected && selectedNames.length >= 3;
               return (
@@ -155,7 +185,7 @@ const StorySetup = () => {
             What kind of story?
           </h2>
           <div className="flex flex-wrap gap-3">
-            {GENRES.map(genre => (
+            {genres.map(genre => (
               <button
                 key={genre.id}
                 onClick={() => setSelectedGenre(genre.id)}
