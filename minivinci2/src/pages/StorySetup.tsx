@@ -14,8 +14,16 @@ const SETTINGS = [
 ];
 
 const CHARACTER_NAMES = [
-  "Pip", "Luna", "Jasper", "Zara", "Finn",
-  "Cleo", "Brix", "Nola", "Theo", "Suki",
+  "Pip the Puma",
+  "Patty the Plumber",
+  "Silly Sam",
+  "Luna the Lighthouse Keeper",
+  "Jasper the Juggling Giant",
+  "Zara the Zebra Whisperer",
+  "Finn the Fearless Frog",
+  "Cleo the Cloud Painter",
+  "Brix the Brave Builder",
+  "Nola the Noisy Napper",
 ];
 
 const GENRES = [
