@@ -66,7 +66,8 @@ export const StoryEditor = () => {
     try {
       const imageUrl = await generateImage(currentPage.text);
       updatePageDrawing(imageUrl);
-      toast.success("Illustration generated!");
+      setMode("draw");
+      toast.success("Illustration generated! You can now draw on top of it.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to generate illustration");
     } finally {
@@ -136,12 +137,7 @@ export const StoryEditor = () => {
                       : <><Sparkles className="mr-2 h-5 w-5" />Generate Illustration</>
                     }
                   </Button>
-                  {currentPage.drawing && (
-                    <div className="rounded-2xl overflow-hidden border-2 border-violet-200">
-                      <img src={currentPage.drawing} alt="AI-generated illustration" className="w-full" />
-                    </div>
-                  )}
-                </div> : <DrawingCanvas pageId={currentPage.id} />}
+                </div> : <DrawingCanvas pageId={currentPage.id} initialImage={currentPage.drawing} />}
             </div>
 
             {/* Navigation */}

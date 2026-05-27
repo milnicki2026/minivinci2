@@ -40,9 +40,10 @@ type BrushType = typeof BRUSH_TYPES[number]["value"];
 
 interface DrawingCanvasProps {
   pageId: string;
+  initialImage?: string;
 }
 
-export const DrawingCanvas = ({ pageId }: DrawingCanvasProps) => {
+export const DrawingCanvas = ({ pageId, initialImage }: DrawingCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [color, setColor] = useState(COLORS[0].value);
@@ -60,17 +61,34 @@ export const DrawingCanvas = ({ pageId }: DrawingCanvasProps) => {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Set canvas size
     canvas.width = canvas.offsetWidth;
     canvas.height = 700;
 
-    // Set cream/off-white background to match watercolor paper
     ctx.fillStyle = "#fdfcf8";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Save initial state
     saveToHistory();
   }, [pageId]);
+
+  // Draw AI-generated image onto canvas as base layer
+  useEffect(() => {
+    if (!initialImage) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const img = new Image();
+    img.onload = () => {
+      ctx.fillStyle = "#fdfcf8";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL();
+      setHistory([dataUrl]);
+      setHistoryStep(0);
+    };
+    img.src = initialImage;
+  }, [initialImage]);
 
   const saveToHistory = () => {
     const canvas = canvasRef.current;
