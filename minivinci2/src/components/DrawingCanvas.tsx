@@ -4,6 +4,7 @@ import { Eraser, Trash2, Brush, Droplet, SprayCan, Highlighter, Pencil, Undo2, R
 import { cn } from "@/lib/utils";
 import { ColorWheel } from "./ColorWheel";
 import { AnimalPicker } from "./AnimalPicker";
+import type { Stamp } from "./AnimalPicker";
 
 const COLORS = [
   { name: "Red", value: "#FF3333" },
@@ -41,9 +42,11 @@ type BrushType = typeof BRUSH_TYPES[number]["value"];
 interface DrawingCanvasProps {
   pageId: string;
   initialImage?: string;
+  stamps?: Stamp[];
+  stampsLoading?: boolean;
 }
 
-export const DrawingCanvas = ({ pageId, initialImage }: DrawingCanvasProps) => {
+export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading = false }: DrawingCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [color, setColor] = useState(COLORS[0].value);
@@ -138,37 +141,10 @@ export const DrawingCanvas = ({ pageId, initialImage }: DrawingCanvasProps) => {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    // Create an image element from the animal SVG
     const img = new Image();
     img.onload = () => {
-      const tempCanvas = document.createElement('canvas');
-      const tempCtx = tempCanvas.getContext('2d');
-      if (!tempCtx) return;
-
       const size = brushSize * 15;
-      tempCanvas.width = size;
-      tempCanvas.height = size;
-
-      // Draw the SVG image
-      tempCtx.drawImage(img, 0, 0, size, size);
-
-      // Apply color tint to the black silhouette
-      const imageData = tempCtx.getImageData(0, 0, size, size);
-      const data = imageData.data;
-
-      for (let i = 0; i < data.length; i += 4) {
-        const alpha = data[i + 3];
-        
-        if (alpha > 0) {
-          // Replace black with selected color
-          data[i] = parseInt(color.slice(1, 3), 16);
-          data[i + 1] = parseInt(color.slice(3, 5), 16);
-          data[i + 2] = parseInt(color.slice(5, 7), 16);
-        }
-      }
-
-      tempCtx.putImageData(imageData, 0, 0);
-      ctx.drawImage(tempCanvas, x - size / 2, y - size / 2);
+      ctx.drawImage(img, x - size / 2, y - size / 2, size, size);
       saveToHistory();
     };
     img.src = selectedAnimal.image;
@@ -489,7 +465,7 @@ export const DrawingCanvas = ({ pageId, initialImage }: DrawingCanvasProps) => {
           </Button>
         </div>
 
-        {/* Animal Picker */}
+        {/* Stamp Picker */}
         <AnimalPicker
           selectedAnimal={selectedAnimal?.name || null}
           onSelectAnimal={(animal) => {
@@ -498,6 +474,8 @@ export const DrawingCanvas = ({ pageId, initialImage }: DrawingCanvasProps) => {
               setIsEraser(false);
             }
           }}
+          stamps={stamps}
+          loading={stampsLoading}
         />
 
         {/* Color Wheel */}
