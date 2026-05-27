@@ -144,7 +144,29 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
     const img = new Image();
     img.onload = () => {
       const size = brushSize * 15;
-      ctx.drawImage(img, x - size / 2, y - size / 2, size, size);
+
+      const tmp = document.createElement("canvas");
+      tmp.width = size;
+      tmp.height = size;
+      const tmpCtx = tmp.getContext("2d");
+      if (!tmpCtx) return;
+
+      tmpCtx.drawImage(img, 0, 0, size, size);
+
+      // Remove white/near-white background pixels
+      const imageData = tmpCtx.getImageData(0, 0, size, size);
+      const d = imageData.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const r = d[i], g = d[i + 1], b = d[i + 2];
+        if (r >= 230 && g >= 230 && b >= 230) {
+          // Fade alpha proportionally so edges blend softly
+          const whiteness = (r + g + b) / 3;
+          d[i + 3] = Math.round(255 * Math.max(0, (230 - whiteness + 25) / 25));
+        }
+      }
+      tmpCtx.putImageData(imageData, 0, 0);
+
+      ctx.drawImage(tmp, x - size / 2, y - size / 2);
       saveToHistory();
     };
     img.onerror = () => {
