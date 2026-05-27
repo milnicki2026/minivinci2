@@ -38,9 +38,14 @@ export const StoryEditor = ({ initialStory, storySetup }: { initialStory?: strin
     if (!storySetup) return;
     setStampsLoading(true);
     getStampSubjects(storySetup.characters, storySetup.setting, storySetup.genre)
-      .then((subjects) => Promise.all(subjects.map((s) => generateStamp(s).then((image) => ({ name: s, image })))))
-      .then((generated) => {
-        setStamps(generated);
+      .then((subjects) =>
+        Promise.allSettled(subjects.map((s) => generateStamp(s).then((image) => ({ name: s, image }))))
+      )
+      .then((results) => {
+        const successful = results
+          .filter((r): r is PromiseFulfilledResult<Stamp> => r.status === "fulfilled" && !!r.value.image)
+          .map((r) => r.value);
+        setStamps(successful);
         setStampsLoading(false);
       })
       .catch(() => setStampsLoading(false));

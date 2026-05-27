@@ -147,6 +147,9 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
       ctx.drawImage(img, x - size / 2, y - size / 2, size, size);
       saveToHistory();
     };
+    img.onerror = () => {
+      setSelectedAnimal(null);
+    };
     img.src = selectedAnimal.image;
   };
 
