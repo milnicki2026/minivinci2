@@ -93,7 +93,7 @@ const StorySetup = () => {
       const setting = settings.find(s => s.id === selectedSetting)!.label;
       const genre = genres.find(g => g.id === selectedGenre)!.label;
       const story = await generateStory(setting, selectedNames, genre);
-      navigate("/create", { state: { story } });
+      navigate("/create", { state: { story, characters: selectedNames, setting, genre } });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to generate story");
       setIsGenerating(false);

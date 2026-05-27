@@ -8,6 +8,50 @@ interface ImageParams {
   caption2: string;
 }
 
+export async function getStampSubjects(
+  characters: string[],
+  setting: string,
+  genre: string
+): Promise<string[]> {
+  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error("Add VITE_ANTHROPIC_API_KEY to your .env file");
+
+  const prompt = `For a children's story, suggest 9 simple subjects for small stamp illustrations. Reply with ONLY a JSON array of 9 strings, no other text.
+
+Characters: ${characters.join(", ")}
+Setting: ${setting}
+Genre: ${genre}
+
+Rules:
+- First 3 items: one simple noun representing each character (e.g. "puma" for "Pip the Puma", "frog" for "Finn the Fearless Frog")
+- Next 3 items: objects/creatures found in the setting (e.g. for "Enchanted Forest": "oak tree", "mushroom", "owl")
+- Last 3 items: iconic objects from the genre (e.g. for "Fairy Tale": "magic wand", "crown", "potion bottle")
+
+Each subject: 1-3 words, simple noun, suitable for a small cute children's book icon.`;
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 200,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+
+  if (!response.ok) throw new Error(`Claude API error: ${response.status}`);
+  const data = await response.json();
+  const text = data.content[0].text as string;
+  const match = text.match(/\[[\s\S]*\]/);
+  if (!match) throw new Error("Could not parse stamp subjects");
+  return JSON.parse(match[0]) as string[];
+}
+
 export async function extractImageParams(storyText: string): Promise<ImageParams> {
   const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("Add VITE_ANTHROPIC_API_KEY to your .env file");

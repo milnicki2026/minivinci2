@@ -7,7 +7,9 @@ import logo from "@/assets/logo.jpeg";
 const Create = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const initialStory = (location.state as { story?: string })?.story;
+  const state = location.state as { story?: string; characters?: string[]; setting?: string; genre?: string } | null;
+  const initialStory = state?.story;
+  const storySetup = state?.characters ? { characters: state.characters, setting: state.setting!, genre: state.genre! } : undefined;
 
   return (
     <div className="min-h-screen">
@@ -28,7 +30,7 @@ const Create = () => {
       </header>
 
       {/* Main Story Editor */}
-      <StoryEditor initialStory={initialStory} />
+      <StoryEditor initialStory={initialStory} storySetup={storySetup} />
     </div>
   );
 };

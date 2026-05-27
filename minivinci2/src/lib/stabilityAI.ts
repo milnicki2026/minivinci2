@@ -1,5 +1,33 @@
 import { extractImageParams } from "./claudeAI";
 
+export async function generateStamp(subject: string): Promise<string> {
+  const apiKey = import.meta.env.VITE_STABILITY_API_KEY;
+  if (!apiKey) throw new Error("Add VITE_STABILITY_API_KEY to your .env file");
+
+  const formData = new FormData();
+  formData.append("prompt", `Minimalist children's book stamp illustration of a ${subject}. Single centered subject, flat watercolor style, soft pastel colors, bold black ink outline, cute and simple, plain white background, no text, no background details, square composition.`);
+  formData.append("negative_prompt", "complex background, scenery, text, words, photo, realistic, multiple subjects, dark, border, frame, collage");
+  formData.append("aspect_ratio", "1:1");
+  formData.append("output_format", "webp");
+
+  const response = await fetch(
+    "https://api.stability.ai/v2beta/stable-image/generate/core",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+      body: formData,
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.message || `Stability AI error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return `data:image/webp;base64,${data.image}`;
+}
+
 export async function generateImage(storyText: string): Promise<string> {
   const apiKey = import.meta.env.VITE_STABILITY_API_KEY;
   if (!apiKey) throw new Error("Add VITE_STABILITY_API_KEY to your .env file");

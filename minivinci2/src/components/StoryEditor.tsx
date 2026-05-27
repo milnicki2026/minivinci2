@@ -1,18 +1,26 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { DrawingCanvas } from "./DrawingCanvas";
 import { BookOpen, Palette, ChevronLeft, ChevronRight, Plus, Eye, Printer, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { generateImage } from "@/lib/stabilityAI";
+import { generateImage, generateStamp } from "@/lib/stabilityAI";
+import { getStampSubjects } from "@/lib/claudeAI";
 import { toast } from "sonner";
+import type { Stamp } from "./AnimalPicker";
 interface StoryPage {
   id: string;
   text: string;
   drawing?: string;
 }
-export const StoryEditor = ({ initialStory }: { initialStory?: string }) => {
+interface StorySetup {
+  characters: string[];
+  setting: string;
+  genre: string;
+}
+
+export const StoryEditor = ({ initialStory, storySetup }: { initialStory?: string; storySetup?: StorySetup }) => {
   const [pages, setPages] = useState<StoryPage[]>([{
     id: "1",
     text: initialStory || "",
@@ -23,6 +31,20 @@ export const StoryEditor = ({ initialStory }: { initialStory?: string }) => {
   const [mode, setMode] = useState<"write" | "draw">("write");
   const [isPreview, setIsPreview] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [stamps, setStamps] = useState<Stamp[]>([]);
+  const [stampsLoading, setStampsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!storySetup) return;
+    setStampsLoading(true);
+    getStampSubjects(storySetup.characters, storySetup.setting, storySetup.genre)
+      .then((subjects) => Promise.all(subjects.map((s) => generateStamp(s).then((image) => ({ name: s, image })))))
+      .then((generated) => {
+        setStamps(generated);
+        setStampsLoading(false);
+      })
+      .catch(() => setStampsLoading(false));
+  }, []);
   const currentPage = pages[currentPageIndex];
   const updatePageText = (text: string) => {
     const newPages = [...pages];
@@ -137,7 +159,7 @@ export const StoryEditor = ({ initialStory }: { initialStory?: string }) => {
                       : <><Sparkles className="mr-2 h-5 w-5" />Generate Illustration</>
                     }
                   </Button>
-                </div> : <DrawingCanvas pageId={currentPage.id} initialImage={currentPage.drawing} />}
+                </div> : <DrawingCanvas pageId={currentPage.id} initialImage={currentPage.drawing} stamps={stamps} stampsLoading={stampsLoading} />}
             </div>
 
             {/* Navigation */}
