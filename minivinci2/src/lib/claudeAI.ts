@@ -34,5 +34,7 @@ Use the character names naturally throughout. Make it vivid, playful, age-approp
   }
 
   const data = await response.json();
-  return data.content[0].text as string;
+  const text = data.content[0].text as string;
+  // Strip any leading markdown title line (e.g. "# Title\n\n")
+  return text.replace(/^#.*\n+/, "").trim();
 }
