@@ -27,7 +27,7 @@ const Welcome = () => {
           {/* Features */}
           <div className="grid md:grid-cols-2 gap-4 mt-8 mb-8">
             <div 
-              onClick={() => navigate("/create")}
+              onClick={() => navigate("/setup")}
               className="bg-white/80 backdrop-blur-sm rounded-3xl p-6 shadow-xl hover:scale-105 transition-transform cursor-pointer"
             >
               <div className="w-16 h-16 bg-teal rounded-full flex items-center justify-center mx-auto mb-4">
@@ -40,7 +40,7 @@ const Welcome = () => {
             </div>
 
             <div 
-              onClick={() => navigate("/create")}
+              onClick={() => navigate("/setup")}
               className="bg-white/80 backdrop-blur-sm rounded-3xl p-6 shadow-xl hover:scale-105 transition-transform cursor-pointer"
             >
               <div className="w-16 h-16 bg-pink rounded-full flex items-center justify-center mx-auto mb-4">
@@ -54,7 +54,7 @@ const Welcome = () => {
           </div>
 
           {/* CTA Button */}
-          <Button onClick={() => navigate("/create")} size="lg" className="bg-gradient-to-r from-teal to-lime hover:from-teal/90 hover:to-lime/90 text-white rounded-full px-12 py-6 text-xl font-bold shadow-2xl hover:scale-110 transition-all">
+          <Button onClick={() => navigate("/setup")} size="lg" className="bg-gradient-to-r from-teal to-lime hover:from-teal/90 hover:to-lime/90 text-white rounded-full px-12 py-6 text-xl font-bold shadow-2xl hover:scale-110 transition-all">
             <BookOpen className="mr-3 h-6 w-6" />
             Start Creating!
           </Button>

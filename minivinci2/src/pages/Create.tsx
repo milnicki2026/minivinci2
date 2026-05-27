@@ -1,11 +1,13 @@
 import { StoryEditor } from "@/components/StoryEditor";
 import { Button } from "@/components/ui/button";
 import { Home } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import logo from "@/assets/logo.jpeg";
 
 const Create = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const initialStory = (location.state as { story?: string })?.story;
 
   return (
     <div className="min-h-screen">
@@ -26,7 +28,7 @@ const Create = () => {
       </header>
 
       {/* Main Story Editor */}
-      <StoryEditor />
+      <StoryEditor initialStory={initialStory} />
     </div>
   );
 };
