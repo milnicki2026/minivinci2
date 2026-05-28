@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Eraser, Trash2, Brush, Droplet, SprayCan, Highlighter, Pencil, Undo2, Redo2 } from "lucide-react";
+import { Eraser, Trash2, Brush, Droplet, SprayCan, Highlighter, Pencil, Undo2, Redo2, Camera, ImagePlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ColorWheel } from "./ColorWheel";
 import { AnimalPicker } from "./AnimalPicker";
 import type { Stamp } from "./AnimalPicker";
+import { PhotoPlacer } from "./PhotoPlacer";
 
 const COLORS = [
   { name: "Red", value: "#FF3333" },
@@ -56,6 +57,9 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
   const [selectedAnimal, setSelectedAnimal] = useState<{name: string, image: string} | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const [historyStep, setHistoryStep] = useState(-1);
+  const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -361,6 +365,29 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
     img.src = history[newStep];
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setPhotoDataUrl(ev.target?.result as string);
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const handlePhotoCommit = (
+    img: HTMLImageElement,
+    src: { x: number; y: number; w: number; h: number },
+    dst: { x: number; y: number; w: number; h: number }
+  ) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(img, src.x, src.y, src.w, src.h, dst.x, dst.y, dst.w, dst.h);
+    saveToHistory();
+    setPhotoDataUrl(null);
+  };
+
   return (
     <div className="flex gap-6 items-start">
       {/* Left side - Canvas and tools */}
@@ -372,29 +399,45 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
 
         {/* Canvas */}
         <div className="border-4 border-dashed border-primary/30 rounded-2xl p-2 bg-muted/30 flex-1">
-          <canvas
-            ref={canvasRef}
-            onMouseDown={startDrawing}
-            onMouseUp={stopDrawing}
-            onMouseMove={draw}
-            onMouseLeave={stopDrawing}
-            className={cn(
-              "w-full rounded-xl shadow-inner",
-              selectedAnimal ? "cursor-pointer" : "cursor-crosshair"
+          {/* relative wrapper so PhotoPlacer can overlay the canvas exactly */}
+          <div className="relative rounded-xl overflow-hidden">
+            <canvas
+              ref={canvasRef}
+              onMouseDown={startDrawing}
+              onMouseUp={stopDrawing}
+              onMouseMove={draw}
+              onMouseLeave={stopDrawing}
+              className={cn(
+                "w-full block rounded-xl shadow-inner",
+                selectedAnimal ? "cursor-pointer" : "cursor-crosshair"
+              )}
+              style={{
+                touchAction: "none",
+                background: `
+                  linear-gradient(0deg, transparent 24%, rgba(255, 255, 255, .05) 25%, rgba(255, 255, 255, .05) 26%, transparent 27%, transparent 74%, rgba(255, 255, 255, .05) 75%, rgba(255, 255, 255, .05) 76%, transparent 77%, transparent),
+                  linear-gradient(90deg, transparent 24%, rgba(255, 255, 255, .05) 25%, rgba(255, 255, 255, .05) 26%, transparent 27%, transparent 74%, rgba(255, 255, 255, .05) 75%, rgba(255, 255, 255, .05) 76%, transparent 77%, transparent),
+                  linear-gradient(90deg, transparent, rgba(230, 230, 220, 0.3) 50%, transparent),
+                  linear-gradient(0deg, transparent, rgba(240, 240, 235, 0.2) 50%, transparent),
+                  #fdfcf8
+                `,
+                backgroundSize: "50px 50px, 50px 50px, 100% 100%, 100% 100%",
+              }}
+            />
+            {photoDataUrl && canvasRef.current && (
+              <PhotoPlacer
+                image={photoDataUrl}
+                canvasWidth={canvasRef.current.width}
+                canvasHeight={canvasRef.current.height}
+                onCommit={handlePhotoCommit}
+                onCancel={() => setPhotoDataUrl(null)}
+              />
             )}
-            style={{ 
-              touchAction: "none",
-              background: `
-                linear-gradient(0deg, transparent 24%, rgba(255, 255, 255, .05) 25%, rgba(255, 255, 255, .05) 26%, transparent 27%, transparent 74%, rgba(255, 255, 255, .05) 75%, rgba(255, 255, 255, .05) 76%, transparent 77%, transparent),
-                linear-gradient(90deg, transparent 24%, rgba(255, 255, 255, .05) 25%, rgba(255, 255, 255, .05) 26%, transparent 27%, transparent 74%, rgba(255, 255, 255, .05) 75%, rgba(255, 255, 255, .05) 76%, transparent 77%, transparent),
-                linear-gradient(90deg, transparent, rgba(230, 230, 220, 0.3) 50%, transparent),
-                linear-gradient(0deg, transparent, rgba(240, 240, 235, 0.2) 50%, transparent),
-                #fdfcf8
-              `,
-              backgroundSize: '50px 50px, 50px 50px, 100% 100%, 100% 100%'
-            }}
-          />
+          </div>
         </div>
+
+        {/* Hidden file inputs */}
+        <input ref={uploadInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileSelect} />
+        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} />
       </div>
 
       {/* Right side - Brush, Size, and Color Wheel */}
@@ -488,6 +531,27 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
           >
             <Redo2 className="h-5 w-5" />
           </Button>
+        </div>
+
+        {/* Photo upload / camera */}
+        <div className="flex flex-col gap-2">
+          <span className="text-sm font-semibold text-center">Photo</span>
+          <div className="flex gap-2 justify-center">
+            <button
+              onClick={() => uploadInputRef.current?.click()}
+              className="w-10 h-10 rounded-full flex items-center justify-center border-2 border-border bg-background hover:border-primary hover:bg-primary/10 transition-all hover:scale-110"
+              title="Upload photo"
+            >
+              <ImagePlus className="h-5 w-5" />
+            </button>
+            <button
+              onClick={() => cameraInputRef.current?.click()}
+              className="w-10 h-10 rounded-full flex items-center justify-center border-2 border-border bg-background hover:border-primary hover:bg-primary/10 transition-all hover:scale-110"
+              title="Take photo"
+            >
+              <Camera className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         {/* Stamp Picker */}
