@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Eraser, Trash2, Brush, Droplet, SprayCan, Highlighter, Pencil, Undo2, Redo2, Camera, ImagePlus, Sparkles, Loader2 } from "lucide-react";
+import { Eraser, Trash2, Brush, Droplet, SprayCan, Highlighter, Pencil, Undo2, Redo2, Camera, ImagePlus, Sparkles, Loader2, MousePointer } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ColorWheel } from "./ColorWheel";
 import { AnimalPicker } from "./AnimalPicker";
@@ -64,7 +64,13 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
   const [showCamera, setShowCamera] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectionRect, setSelectionRect] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null);
+  const [floatingSelection, setFloatingSelection] = useState<{ x: number; y: number; w: number; h: number; dataUrl: string } | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const drawingSelRef = useRef<{ startX: number; startY: number; endX: number; endY: number } | null>(null);
+  const isDrawingSelRef = useRef(false);
+  const selDragRef = useRef<{ startMouseX: number; startMouseY: number; startSelX: number; startSelY: number } | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -98,6 +104,30 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
     img.src = initialImage;
   }, [initialImage]);
 
+  // Window-level listeners for dragging a floating selection
+  useEffect(() => {
+    const onMove = (e: MouseEvent | TouchEvent) => {
+      const d = selDragRef.current;
+      if (!d) return;
+      const cx = "touches" in e ? e.touches[0].clientX : e.clientX;
+      const cy = "touches" in e ? e.touches[0].clientY : e.clientY;
+      setFloatingSelection(prev =>
+        prev ? { ...prev, x: d.startSelX + cx - d.startMouseX, y: d.startSelY + cy - d.startMouseY } : null
+      );
+    };
+    const onUp = () => { selDragRef.current = null; };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    window.addEventListener("touchmove", onMove, { passive: false });
+    window.addEventListener("touchend", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onUp);
+    };
+  }, []);
+
   const saveToHistory = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -110,6 +140,17 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (selectMode) {
+      if (!floatingSelection) {
+        const r = canvasRef.current!.getBoundingClientRect();
+        const x = e.clientX - r.left;
+        const y = e.clientY - r.top;
+        drawingSelRef.current = { startX: x, startY: y, endX: x, endY: y };
+        setSelectionRect({ ...drawingSelRef.current });
+        isDrawingSelRef.current = true;
+      }
+      return;
+    }
     if (selectedAnimal) {
       stampAnimal(e);
     } else {
@@ -164,6 +205,15 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
   };
 
   const stopDrawing = () => {
+    if (selectMode) {
+      if (isDrawingSelRef.current && drawingSelRef.current) {
+        isDrawingSelRef.current = false;
+        const { startX, startY, endX, endY } = drawingSelRef.current;
+        drawingSelRef.current = null;
+        captureSelection(startX, startY, endX, endY);
+      }
+      return;
+    }
     if (isDrawing) {
       saveToHistory();
     }
@@ -173,6 +223,40 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.beginPath();
+  };
+
+  const captureSelection = (startX: number, startY: number, endX: number, endY: number) => {
+    const x = Math.round(Math.min(startX, endX));
+    const y = Math.round(Math.min(startY, endY));
+    const w = Math.round(Math.abs(endX - startX));
+    const h = Math.round(Math.abs(endY - startY));
+    if (w < 5 || h < 5) { setSelectionRect(null); return; }
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const tmp = document.createElement("canvas");
+    tmp.width = w; tmp.height = h;
+    tmp.getContext("2d")!.drawImage(canvas, x, y, w, h, 0, 0, w, h);
+    ctx.clearRect(x, y, w, h);
+    setSelectionRect(null);
+    setFloatingSelection({ x, y, w, h, dataUrl: tmp.toDataURL() });
+  };
+
+  const commitFloatingSelection = () => {
+    if (!floatingSelection) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const img = new Image();
+    const snap = floatingSelection;
+    img.onload = () => {
+      ctx.drawImage(img, snap.x, snap.y, snap.w, snap.h);
+      saveToHistory();
+    };
+    img.src = snap.dataUrl;
+    setFloatingSelection(null);
   };
 
   const drawWatercolor = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
@@ -252,6 +336,16 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (selectMode) {
+      if (isDrawingSelRef.current && drawingSelRef.current) {
+        const r = canvasRef.current!.getBoundingClientRect();
+        const x = e.clientX - r.left;
+        const y = e.clientY - r.top;
+        drawingSelRef.current = { ...drawingSelRef.current, endX: x, endY: y };
+        setSelectionRect({ ...drawingSelRef.current });
+      }
+      return;
+    }
     if (!isDrawing && e.type !== "mousedown") return;
 
     const canvas = canvasRef.current;
@@ -431,7 +525,7 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
               onMouseLeave={stopDrawing}
               className={cn(
                 "w-full block rounded-xl shadow-inner",
-                selectedAnimal ? "cursor-pointer" : "cursor-crosshair"
+                selectedAnimal ? "cursor-pointer" : selectMode ? "cursor-crosshair" : "cursor-crosshair"
               )}
               style={{
                 touchAction: "none",
@@ -445,6 +539,36 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
                 backgroundSize: "50px 50px, 50px 50px, 100% 100%, 100% 100%",
               }}
             />
+            {/* Selection: drawing rect */}
+            {selectMode && selectionRect && (() => {
+              const x = Math.min(selectionRect.startX, selectionRect.endX);
+              const y = Math.min(selectionRect.startY, selectionRect.endY);
+              const w = Math.abs(selectionRect.endX - selectionRect.startX);
+              const h = Math.abs(selectionRect.endY - selectionRect.startY);
+              return (
+                <div
+                  className="absolute pointer-events-none border-2 border-dashed border-primary"
+                  style={{ left: x, top: y, width: w, height: h, background: "rgba(99,102,241,0.06)" }}
+                />
+              );
+            })()}
+
+            {/* Selection: floating element — commit on backdrop click, drag to move */}
+            {selectMode && floatingSelection && (
+              <>
+                <div className="absolute inset-0 z-10" style={{ cursor: "default" }} onClick={commitFloatingSelection} />
+                <div
+                  className="absolute z-20 select-none"
+                  style={{ left: floatingSelection.x, top: floatingSelection.y, width: floatingSelection.w, height: floatingSelection.h, cursor: "grab", touchAction: "none" }}
+                  onMouseDown={(e) => { e.stopPropagation(); selDragRef.current = { startMouseX: e.clientX, startMouseY: e.clientY, startSelX: floatingSelection.x, startSelY: floatingSelection.y }; }}
+                  onTouchStart={(e) => { e.stopPropagation(); selDragRef.current = { startMouseX: e.touches[0].clientX, startMouseY: e.touches[0].clientY, startSelX: floatingSelection.x, startSelY: floatingSelection.y }; }}
+                >
+                  <img src={floatingSelection.dataUrl} style={{ width: "100%", height: "100%", display: "block" }} draggable={false} />
+                  <div className="absolute inset-0 border-2 border-dashed border-primary pointer-events-none" />
+                </div>
+              </>
+            )}
+
             {photoDataUrl && canvasRef.current && (
               <PhotoPlacer
                 image={photoDataUrl}
@@ -484,6 +608,7 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
                      setBrushType(type.value);
                      setIsEraser(false);
                      setSelectedAnimal(null);
+                     if (selectMode) { commitFloatingSelection(); setSelectMode(false); }
                    }}
                   className={cn(
                     "w-10 h-10 rounded-full flex items-center justify-center transition-all hover:scale-110 border-2",
@@ -527,10 +652,24 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
           </div>
         </div>
 
-        {/* Eraser and Undo/Redo */}
-        <div className="flex gap-2 justify-center">
+        {/* Select / Eraser / Undo / Redo */}
+        <div className="flex gap-2 justify-center flex-wrap">
           <Button
             onClick={() => {
+              const next = !selectMode;
+              if (!next) commitFloatingSelection();
+              setSelectMode(next);
+              if (next) { setIsEraser(false); setSelectedAnimal(null); }
+            }}
+            variant={selectMode ? "default" : "outline"}
+            className="rounded-full"
+          >
+            <MousePointer className="mr-2 h-5 w-5" />
+            Select
+          </Button>
+          <Button
+            onClick={() => {
+              if (selectMode) { commitFloatingSelection(); setSelectMode(false); }
               setIsEraser(!isEraser);
               setSelectedAnimal(null);
             }}
@@ -590,6 +729,7 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
             setSelectedAnimal(animal);
             if (animal) {
               setIsEraser(false);
+              if (selectMode) { commitFloatingSelection(); setSelectMode(false); }
             }
           }}
           stamps={stamps}
