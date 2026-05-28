@@ -3,9 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { DrawingCanvas } from "./DrawingCanvas";
-import { BookOpen, Palette, ChevronLeft, ChevronRight, Plus, Eye, Printer, Sparkles, Loader2 } from "lucide-react";
+import { BookOpen, Palette, ChevronLeft, ChevronRight, Plus, Eye, Printer } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { generateImage, generateStamp } from "@/lib/stabilityAI";
+import { generateStamp } from "@/lib/stabilityAI";
 import { getStampSubjects } from "@/lib/claudeAI";
 import { toast } from "sonner";
 import type { Stamp } from "./AnimalPicker";
@@ -30,7 +30,6 @@ export const StoryEditor = ({ initialStory, storySetup }: { initialStory?: strin
   const [storyTitle, setStoryTitle] = useState("My Amazing Story");
   const [mode, setMode] = useState<"write" | "draw">("write");
   const [isPreview, setIsPreview] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
   const [stamps, setStamps] = useState<Stamp[]>([]);
   const [stampsLoading, setStampsLoading] = useState(false);
 
@@ -82,24 +81,6 @@ export const StoryEditor = ({ initialStory, storySetup }: { initialStory?: strin
     const newPages = [...pages];
     newPages[currentPageIndex] = { ...currentPage, drawing };
     setPages(newPages);
-  };
-
-  const handleGenerateIllustration = async () => {
-    if (!currentPage.text.trim()) {
-      toast.error("Write something first so the AI knows what to draw!");
-      return;
-    }
-    setIsGenerating(true);
-    try {
-      const imageUrl = await generateImage(currentPage.text);
-      updatePageDrawing(imageUrl);
-      setMode("draw");
-      toast.success("Illustration generated! You can now draw on top of it.");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to generate illustration");
-    } finally {
-      setIsGenerating(false);
-    }
   };
 
   const handlePrint = () => {
@@ -154,16 +135,6 @@ export const StoryEditor = ({ initialStory, storySetup }: { initialStory?: strin
                     Page {currentPageIndex + 1} of {pages.length}
                   </div>
                   <Textarea value={currentPage.text} onChange={e => updatePageText(e.target.value)} placeholder="Once upon a time..." className="min-h-[400px] text-lg border-2 border-border rounded-2xl resize-none focus-visible:ring-2 focus-visible:ring-primary" />
-                  <Button
-                    onClick={handleGenerateIllustration}
-                    disabled={isGenerating || !currentPage.text.trim()}
-                    className="bg-violet-500 hover:bg-violet-600 text-white rounded-full px-6"
-                  >
-                    {isGenerating
-                      ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" />Generating...</>
-                      : <><Sparkles className="mr-2 h-5 w-5" />Generate Illustration</>
-                    }
-                  </Button>
                 </div> : <DrawingCanvas pageId={currentPage.id} initialImage={currentPage.drawing} stamps={stamps} stampsLoading={stampsLoading} />}
             </div>
 
@@ -181,7 +152,17 @@ export const StoryEditor = ({ initialStory, storySetup }: { initialStory?: strin
                 </Button>
               </div>
 
-              <Button onClick={goToNextPage} disabled={currentPageIndex === pages.length - 1} className="bg-orange hover:bg-orange/90 text-white rounded-full px-6 disabled:opacity-50">
+              <Button
+                onClick={() => {
+                  if (mode === "write" && currentPageIndex === pages.length - 1) {
+                    setMode("draw");
+                  } else {
+                    goToNextPage();
+                  }
+                }}
+                disabled={mode === "draw" && currentPageIndex === pages.length - 1}
+                className="bg-orange hover:bg-orange/90 text-white rounded-full px-6 disabled:opacity-50"
+              >
                 Next
                 <ChevronRight className="ml-2 h-5 w-5" />
               </Button>
