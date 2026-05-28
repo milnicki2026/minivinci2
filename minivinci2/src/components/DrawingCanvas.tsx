@@ -71,10 +71,7 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
 
     canvas.width = canvas.offsetWidth;
     canvas.height = 700;
-
-    ctx.fillStyle = "#fdfcf8";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
+    // Canvas starts transparent; CSS background provides the white appearance
     saveToHistory();
   }, [pageId]);
 
@@ -88,26 +85,8 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
 
     const img = new Image();
     img.onload = () => {
-      ctx.fillStyle = "#000000";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      const imgAspect = img.width / img.height;
-      const canvasAspect = canvas.width / canvas.height;
-      let drawWidth, drawHeight, drawX, drawY;
-
-      if (imgAspect > canvasAspect) {
-        drawWidth = canvas.width;
-        drawHeight = canvas.width / imgAspect;
-        drawX = 0;
-        drawY = (canvas.height - drawHeight) / 2;
-      } else {
-        drawHeight = canvas.height;
-        drawWidth = canvas.height * imgAspect;
-        drawX = (canvas.width - drawWidth) / 2;
-        drawY = 0;
-      }
-
-      ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       const dataUrl = canvas.toDataURL();
       setHistory([dataUrl]);
       setHistoryStep(0);
@@ -305,13 +284,16 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
           ctx.moveTo(x, y);
       }
     } else {
+      ctx.save();
+      ctx.globalCompositeOperation = "destination-out";
       ctx.lineWidth = brushSize;
       ctx.lineCap = "round";
-      ctx.strokeStyle = "#fdfcf8";
+      ctx.strokeStyle = "rgba(0,0,0,1)";
       ctx.lineTo(x, y);
       ctx.stroke();
       ctx.beginPath();
       ctx.moveTo(x, y);
+      ctx.restore();
     }
   };
 
@@ -321,8 +303,7 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    ctx.fillStyle = "#fdfcf8";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     saveToHistory();
   };
 
@@ -384,7 +365,10 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "destination-over";
     ctx.drawImage(img, src.x, src.y, src.w, src.h, dst.x, dst.y, dst.w, dst.h);
+    ctx.restore();
     saveToHistory();
     setPhotoDataUrl(null);
   };
