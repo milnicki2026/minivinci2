@@ -6,6 +6,7 @@ import { ColorWheel } from "./ColorWheel";
 import { AnimalPicker } from "./AnimalPicker";
 import type { Stamp } from "./AnimalPicker";
 import { PhotoPlacer } from "./PhotoPlacer";
+import { CameraCapture } from "./CameraCapture";
 
 const COLORS = [
   { name: "Red", value: "#FF3333" },
@@ -58,8 +59,8 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
   const [history, setHistory] = useState<string[]>([]);
   const [historyStep, setHistoryStep] = useState(-1);
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
+  const [showCamera, setShowCamera] = useState(false);
   const uploadInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -435,9 +436,16 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
           </div>
         </div>
 
-        {/* Hidden file inputs */}
+        {/* Hidden file input for gallery uploads */}
         <input ref={uploadInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileSelect} />
-        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} />
+
+        {/* Camera capture modal */}
+        {showCamera && (
+          <CameraCapture
+            onCapture={(dataUrl) => { setPhotoDataUrl(dataUrl); setShowCamera(false); }}
+            onCancel={() => setShowCamera(false)}
+          />
+        )}
       </div>
 
       {/* Right side - Brush, Size, and Color Wheel */}
@@ -545,7 +553,7 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
               <ImagePlus className="h-5 w-5" />
             </button>
             <button
-              onClick={() => cameraInputRef.current?.click()}
+              onClick={() => setShowCamera(true)}
               className="w-10 h-10 rounded-full flex items-center justify-center border-2 border-border bg-background hover:border-primary hover:bg-primary/10 transition-all hover:scale-110"
               title="Take photo"
             >
