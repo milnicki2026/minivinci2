@@ -26,8 +26,8 @@ const Welcome = () => {
 
           {/* Features */}
           <div className="grid md:grid-cols-2 gap-4 mt-8 mb-8">
-            <div 
-              onClick={() => navigate("/setup")}
+            <div
+              onClick={() => navigate("/create")}
               className="bg-white/80 backdrop-blur-sm rounded-3xl p-6 shadow-xl hover:scale-105 transition-transform cursor-pointer"
             >
               <div className="w-16 h-16 bg-teal rounded-full flex items-center justify-center mx-auto mb-4">
