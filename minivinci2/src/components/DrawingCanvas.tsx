@@ -386,7 +386,20 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
       if (!ctx) return;
       const img = new Image();
       img.onload = () => {
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        // Black bars (letterbox / pillarbox) — never stretch
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        const imgAspect = img.naturalWidth / img.naturalHeight;
+        const canvasAspect = canvas.width / canvas.height;
+        let dw, dh, dx, dy;
+        if (imgAspect > canvasAspect) {
+          dw = canvas.width; dh = canvas.width / imgAspect;
+          dx = 0; dy = (canvas.height - dh) / 2;
+        } else {
+          dh = canvas.height; dw = canvas.height * imgAspect;
+          dx = (canvas.width - dw) / 2; dy = 0;
+        }
+        ctx.drawImage(img, dx, dy, dw, dh);
         saveToHistory();
       };
       img.src = dataUrl;
