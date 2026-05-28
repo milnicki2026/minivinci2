@@ -49,9 +49,10 @@ interface DrawingCanvasProps {
   stamps?: Stamp[];
   stampsLoading?: boolean;
   storyText?: string;
+  onDrawingChange?: (dataUrl: string) => void;
 }
 
-export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading = false, storyText = "" }: DrawingCanvasProps) => {
+export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading = false, storyText = "", onDrawingChange }: DrawingCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [color, setColor] = useState(COLORS[0].value);
@@ -137,6 +138,7 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
     newHistory.push(dataUrl);
     setHistory(newHistory);
     setHistoryStep(newHistory.length - 1);
+    onDrawingChange?.(dataUrl);
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
