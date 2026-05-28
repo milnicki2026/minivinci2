@@ -365,17 +365,9 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    // Capture existing strokes, draw photo underneath, restore strokes on top
-    const snapshot = canvas.toDataURL();
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(img, src.x, src.y, src.w, src.h, dst.x, dst.y, dst.w, dst.h);
-    const overlay = new Image();
-    overlay.onload = () => {
-      ctx.drawImage(overlay, 0, 0);
-      saveToHistory();
-      setPhotoDataUrl(null);
-    };
-    overlay.src = snapshot;
+    saveToHistory();
+    setPhotoDataUrl(null);
   };
 
   return (
