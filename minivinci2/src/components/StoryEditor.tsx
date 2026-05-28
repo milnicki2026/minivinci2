@@ -3,8 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { DrawingCanvas } from "./DrawingCanvas";
 import {
-  BookOpen, Palette, ChevronLeft, ChevronRight, Plus,
-  Eye, Printer, LayoutGrid, X, GripVertical,
+  BookOpen, Palette, ChevronLeft, ChevronRight, ChevronDown, Plus,
+  Eye, Printer, LayoutGrid, X, GripVertical, Star, BookMarked,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { generateStamp } from "@/lib/stabilityAI";
@@ -13,12 +13,82 @@ import { toast } from "sonner";
 import type { Stamp } from "./AnimalPicker";
 
 // ── Data model ────────────────────────────────────────────────────
+type PageType =
+  | "write"
+  | "draw"
+  | "cover"
+  | "inside-cover"
+  | "inside-back-cover"
+  | "back-cover";
+
 interface StoryPage {
   id: string;
-  type: "write" | "draw";
+  type: PageType;
   text: string;
   drawing?: string;
 }
+
+// Metadata for every page type — colours, labels, icons
+const PAGE_META: Record<
+  PageType,
+  {
+    label: string;
+    short: string;
+    handleBg: string;
+    textColor: string;
+    activeBorder: string;
+    activeShadow: string;
+    dotColor: string;
+    thumbBg: string;
+    Icon: React.ComponentType<{ className?: string }>;
+  }
+> = {
+  write: {
+    label: "Write Page",    short: "Write",
+    handleBg: "bg-teal/15", textColor: "text-teal",
+    activeBorder: "border-teal", activeShadow: "shadow-teal/20",
+    dotColor: "bg-teal",    thumbBg: "bg-white",
+    Icon: BookOpen,
+  },
+  draw: {
+    label: "Draw Page",     short: "Draw",
+    handleBg: "bg-pink/15", textColor: "text-pink",
+    activeBorder: "border-pink", activeShadow: "shadow-pink/20",
+    dotColor: "bg-pink",    thumbBg: "bg-muted",
+    Icon: Palette,
+  },
+  cover: {
+    label: "Cover",         short: "Cover",
+    handleBg: "bg-yellow/30", textColor: "text-orange",
+    activeBorder: "border-yellow", activeShadow: "shadow-yellow/20",
+    dotColor: "bg-yellow",    thumbBg: "bg-yellow/10",
+    Icon: Star,
+  },
+  "inside-cover": {
+    label: "Inside Cover",  short: "Inside Cvr",
+    handleBg: "bg-yellow/30", textColor: "text-orange",
+    activeBorder: "border-yellow", activeShadow: "shadow-yellow/20",
+    dotColor: "bg-yellow",    thumbBg: "bg-yellow/10",
+    Icon: BookMarked,
+  },
+  "inside-back-cover": {
+    label: "Inside Back Cover", short: "Inside Back",
+    handleBg: "bg-orange/80", textColor: "text-white",
+    activeBorder: "border-orange", activeShadow: "shadow-orange/20",
+    dotColor: "bg-orange",    thumbBg: "bg-orange/10",
+    Icon: BookMarked,
+  },
+  "back-cover": {
+    label: "Back Cover",    short: "Back Cvr",
+    handleBg: "bg-orange",  textColor: "text-white",
+    activeBorder: "border-orange", activeShadow: "shadow-orange/20",
+    dotColor: "bg-orange",    thumbBg: "bg-orange/10",
+    Icon: Star,
+  },
+};
+
+// All non-write types use the drawing canvas
+const isCanvasType = (t: PageType) => t !== "write";
 
 interface StorySetup {
   characters: string[];
@@ -47,6 +117,7 @@ export const StoryEditor = ({
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [showViewAllAddMenu, setShowViewAllAddMenu] = useState(false);
+  const [showStructureSection, setShowStructureSection] = useState(false);
 
   useEffect(() => {
     if (!storySetup) return;
@@ -75,7 +146,7 @@ export const StoryEditor = ({
     });
   };
 
-  const addPage = (type: "write" | "draw") => {
+  const addPage = (type: PageType) => {
     const newPage: StoryPage = {
       id: Date.now().toString(),
       type,
@@ -86,6 +157,14 @@ export const StoryEditor = ({
     setCurrentPageIndex(pages.length);
     setShowAddMenu(false);
   };
+
+  // Reset add-menu state whenever the All Pages overlay closes
+  useEffect(() => {
+    if (!viewAll) {
+      setShowViewAllAddMenu(false);
+      setShowStructureSection(false);
+    }
+  }, [viewAll]);
 
   const goToNextPage = () => {
     if (currentPageIndex < pages.length - 1) setCurrentPageIndex((i) => i + 1);
@@ -140,9 +219,228 @@ export const StoryEditor = ({
 
   // ── View All ───────────────────────────────────────────────────
   if (viewAll) {
+    // Typed slots
+    type SpreadSlot =
+      | { kind: "page"; page: StoryPage; index: number }
+      | { kind: "add" }
+      | { kind: "empty" };
+
+    // Page 0 is always the solo cover; remaining pages pair up
+    type Spread =
+      | { kind: "solo"; slot: SpreadSlot }
+      | { kind: "pair"; left: SpreadSlot; right: SpreadSlot };
+
+    const spreads: Spread[] = [];
+
+    if (pages.length > 0) {
+      spreads.push({ kind: "solo", slot: { kind: "page", page: pages[0], index: 0 } });
+    }
+
+    const rest: SpreadSlot[] = [
+      ...pages.slice(1).map((page, i) => ({ kind: "page" as const, page, index: i + 1 })),
+      { kind: "add" as const },
+    ];
+    if (rest.length % 2 !== 0) rest.push({ kind: "empty" as const });
+    for (let i = 0; i < rest.length; i += 2) {
+      spreads.push({ kind: "pair", left: rest[i], right: rest[i + 1] });
+    }
+
+    const renderSlot = (slot: SpreadSlot, side: "left" | "right" | "solo") => {
+      // Empty padding slot
+      if (slot.kind === "empty") return <div className="flex-1" />;
+
+      // Add page slot
+      if (slot.kind === "add") {
+        return (
+          <div className="flex-1 flex flex-col">
+            <div
+              className={cn(
+                "rounded-xl overflow-hidden border-2 border-dashed border-border flex flex-col",
+                side === "left" ? "rounded-r-sm" : side === "right" ? "rounded-l-sm" : ""
+              )}
+            >
+              {/* Invisible spacer — matches drag handle strip height exactly */}
+              <div className="flex items-center px-2 py-1.5 pointer-events-none select-none opacity-0" aria-hidden>
+                <GripVertical className="h-3.5 w-3.5" />
+              </div>
+
+              {/* Content — same aspect ratio as page thumbnails */}
+              {showViewAllAddMenu ? (
+                <div className="w-full aspect-[3/4] flex flex-col gap-1 p-1.5 overflow-y-auto">
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground px-1 pt-0.5">Story</p>
+                  {(["write", "draw"] as PageType[]).map((t) => {
+                    const m = PAGE_META[t];
+                    return (
+                      <button key={t}
+                        onClick={() => { addPage(t); setViewAll(false); setShowViewAllAddMenu(false); }}
+                        className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-neutral/30 bg-white text-foreground hover:bg-muted/40 transition-all focus:outline-none text-left"
+                      >
+                        <m.Icon className={cn("h-3.5 w-3.5 flex-shrink-0", m.textColor)} />
+                        <span className="text-[10px] font-semibold leading-tight">{m.label}</span>
+                      </button>
+                    );
+                  })}
+                  <div className="h-px bg-border mx-1 my-0.5" />
+                  {/* Book Cover — collapsible drawer */}
+                  <button
+                    onClick={() => setShowStructureSection(v => !v)}
+                    className="flex items-center justify-between px-1.5 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider text-muted-foreground hover:bg-muted/50 transition-colors focus:outline-none"
+                  >
+                    Book Cover
+                    <ChevronDown className={cn("h-3 w-3 transition-transform", showStructureSection ? "rotate-0" : "-rotate-90")} />
+                  </button>
+                  {showStructureSection && (
+                    <div className="flex flex-col gap-1">
+                      {(["cover", "inside-cover", "inside-back-cover", "back-cover"] as PageType[]).map((t) => {
+                        const m = PAGE_META[t];
+                        return (
+                          <button key={t}
+                            onClick={() => { addPage(t); setViewAll(false); setShowViewAllAddMenu(false); }}
+                            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-neutral/30 bg-white text-foreground hover:bg-muted/40 transition-all focus:outline-none text-left"
+                          >
+                            <m.Icon className="h-3.5 w-3.5 flex-shrink-0 text-orange" />
+                            <span className="text-[10px] font-semibold leading-tight">{m.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <button
+                  onClick={() => { setShowViewAllAddMenu(true); setShowStructureSection(false); }}
+                  className="w-full aspect-[3/4] flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-primary hover:bg-primary/5 transition-all focus:outline-none"
+                >
+                  <Plus className="h-7 w-7" />
+                  <span className="text-[11px] font-semibold">Add Page</span>
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      // Real page card
+      const { page, index } = slot;
+      const meta = PAGE_META[page.type];
+      const isDragging = dragIndex === index;
+      const isOver = dragOverIndex === index && dragIndex !== index;
+      const isCurrent = index === currentPageIndex;
+
+      return (
+        <div
+          className={cn(
+            "flex-1 flex flex-col transition-all select-none",
+            isDragging ? "opacity-40 scale-[0.97]" : "",
+          )}
+        >
+          {/* Entire card is the drop target */}
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragOverIndex(index); }}
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverIndex(null);
+            }}
+            onDrop={(e) => { e.preventDefault(); handleDrop(index); }}
+            className={cn(
+              "relative rounded-xl overflow-hidden border-2 shadow-sm transition-all",
+              side === "left" ? "rounded-r-sm" : side === "right" ? "rounded-l-sm" : "",
+              isOver
+                ? "border-primary ring-4 ring-primary/25 shadow-primary/20 shadow-lg scale-[1.03]"
+                : isCurrent
+                  ? `${meta.activeBorder} ${meta.activeShadow}`
+                  : "border-border"
+            )}
+          >
+            {/* Drag handle strip */}
+            <div
+              draggable
+              onDragStart={(e) => { e.stopPropagation(); setDragIndex(index); }}
+              onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); }}
+              className={cn(
+                "flex items-center justify-between px-2 py-1.5 cursor-grab active:cursor-grabbing",
+                meta.handleBg
+              )}
+            >
+              <div className="flex items-center gap-1.5">
+                <GripVertical className={cn("h-3.5 w-3.5", meta.textColor)} />
+                <span className={cn("text-[10px] font-bold uppercase tracking-wide", meta.textColor)}>
+                  {meta.short}
+                </span>
+              </div>
+              <span className="text-[10px] text-muted-foreground font-medium">{index + 1}</span>
+            </div>
+
+            {/* Thumbnail */}
+            <button
+              draggable={false}
+              onClick={() => { setCurrentPageIndex(index); setViewAll(false); }}
+              className={cn("relative w-full aspect-[3/4] block focus:outline-none group overflow-hidden", meta.thumbBg)}
+            >
+              {page.type === "write" ? (
+                /* Write page — text preview or ruled lines */
+                <div className="absolute inset-0 p-3 flex flex-col overflow-hidden">
+                  {page.text ? (
+                    <p className="text-[7px] leading-[1.6] text-foreground/80 break-words whitespace-pre-wrap">
+                      {page.text}
+                    </p>
+                  ) : (
+                    <div className="flex flex-col gap-[6px] pt-1">
+                      {Array.from({ length: 12 }).map((_, i) => (
+                        <div key={i} className="h-[3px] rounded-full bg-muted-foreground/12" />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Canvas-based page — drawing or placeholder */
+                <div className="absolute inset-0 flex items-center justify-center">
+                  {page.drawing ? (
+                    <img
+                      draggable={false}
+                      src={page.drawing}
+                      alt={`Page ${index + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    /* Unique placeholder per structural type */
+                    <div className="flex flex-col items-center gap-2 opacity-40">
+                      <meta.Icon className={cn("h-8 w-8", meta.textColor)} />
+                      <span className={cn("text-[9px] font-bold uppercase tracking-widest", meta.textColor)}>
+                        {meta.short}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {isCurrent && !isOver && (
+                <div className={cn(
+                  "absolute top-1.5 right-1.5 text-[9px] font-bold uppercase tracking-wide rounded-full px-1.5 py-0.5 text-white",
+                  meta.dotColor
+                )}>
+                  Current
+                </div>
+              )}
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors" />
+            </button>
+
+            {/* Drop overlay */}
+            {isOver && (
+              <div className="absolute inset-0 bg-primary/8 pointer-events-none flex items-center justify-center">
+                <span className="text-[11px] font-bold text-primary bg-white/90 rounded-full px-3 py-1 shadow-sm">
+                  Move here
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    };
+
     return (
       <div className="fixed inset-0 z-50 bg-white overflow-y-auto">
-        <div className="max-w-5xl mx-auto p-6 md:p-10">
+        <div className="max-w-3xl mx-auto p-6 md:p-10">
+          {/* Header */}
           <div className="flex items-center justify-between mb-8">
             <div>
               <h2 className="text-2xl font-bold">All Pages</h2>
@@ -154,139 +452,54 @@ export const StoryEditor = ({
             </Button>
           </div>
 
-          {/* Thumbnail grid */}
-          <div className="grid grid-cols-3 md:grid-cols-4 gap-5">
-            {pages.map((page, index) => {
-              const isWrite = page.type === "write";
-              const isDragging = dragIndex === index;
-              const isOver = dragOverIndex === index && dragIndex !== index;
-              return (
-                <div
-                  key={page.id}
-                  className={cn(
-                    "flex flex-col gap-1.5 transition-all select-none",
-                    isDragging ? "opacity-30 scale-95" : "",
-                    isOver ? "scale-[1.05]" : ""
-                  )}
-                >
-                  {/* Drop-target highlight — shown above card when dragging over */}
-                  {isOver && (
-                    <div className="h-1 rounded-full bg-primary mx-1 -mb-1" />
-                  )}
+          {/* Spreads — cover solo, rest in pairs */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+            {spreads.map((spread, si) => {
+              if (spread.kind === "solo") {
+                return (
+                  <div key="cover" className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                        Cover · p. 1
+                      </span>
+                      <div className="flex-1 h-px bg-border/60" />
+                    </div>
+                    <div className="flex">
+                      <div className="w-1/2 shadow-md">{renderSlot(spread.slot, "solo")}</div>
+                    </div>
+                  </div>
+                );
+              }
 
-                  {/* Card — drag handle strip on top, thumbnail below */}
-                  <div
-                    className={cn(
-                      "relative rounded-xl overflow-hidden border-2 shadow-sm transition-all",
-                      index === currentPageIndex
-                        ? isWrite ? "border-teal shadow-teal/30" : "border-pink shadow-pink/30"
-                        : isOver ? "border-primary" : "border-border"
-                    )}
-                  >
-                    {/* ── Drag handle strip ── always visible, drag only from here */}
-                    <div
-                      draggable
-                      onDragStart={(e) => { e.stopPropagation(); setDragIndex(index); }}
-                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverIndex(index); }}
-                      onDrop={(e) => { e.stopPropagation(); handleDrop(index); }}
-                      onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); }}
-                      className={cn(
-                        "flex items-center justify-between px-2 py-1.5 cursor-grab active:cursor-grabbing",
-                        isWrite ? "bg-teal/15" : "bg-pink/15"
-                      )}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <GripVertical className={cn("h-3.5 w-3.5", isWrite ? "text-teal" : "text-pink")} />
-                        <span className={cn("text-[10px] font-bold uppercase tracking-wide", isWrite ? "text-teal" : "text-pink")}>
-                          {isWrite ? "Write" : "Draw"}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-muted-foreground font-medium">{index + 1}</span>
+              const { left: leftSlot, right: rightSlot } = spread;
+              const hasAdd = leftSlot.kind === "add" || rightSlot.kind === "add";
+              const pairIndex = si - 1;
+              const leftNum = si * 2;
+              const rightNum = si * 2 + 1;
+              return (
+                <div key={si} className="flex flex-col gap-2">
+                  {/* Spread label */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      {hasAdd ? "New spread" : `Spread ${pairIndex + 1} · pp. ${leftNum}–${rightNum}`}
+                    </span>
+                    <div className="flex-1 h-px bg-border/60" />
+                  </div>
+
+                  {/* Two pages side by side with spine */}
+                  <div className="flex items-stretch gap-0 rounded-xl overflow-hidden shadow-md">
+                    <div className="flex-1 flex">{renderSlot(leftSlot, "left")}</div>
+
+                    {/* Spine */}
+                    <div className="w-3 flex-shrink-0 bg-gradient-to-r from-black/8 via-black/4 to-black/8 relative">
+                      <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-black/10" />
                     </div>
 
-                    {/* ── Thumbnail ── click to navigate */}
-                    <button
-                      draggable={false}
-                      onClick={() => { setCurrentPageIndex(index); setViewAll(false); }}
-                      className="relative w-full aspect-[3/4] block focus:outline-none group overflow-hidden bg-white"
-                    >
-                      {isWrite ? (
-                        <div className="absolute inset-0 p-3 flex flex-col overflow-hidden">
-                          {page.text ? (
-                            <p className="text-[7px] leading-[1.6] text-foreground/80 break-words whitespace-pre-wrap">
-                              {page.text}
-                            </p>
-                          ) : (
-                            <div className="flex flex-col gap-[6px] pt-1">
-                              {Array.from({ length: 12 }).map((_, i) => (
-                                <div key={i} className="h-[3px] rounded-full bg-muted-foreground/12" />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="absolute inset-0 bg-muted flex items-center justify-center">
-                          {page.drawing ? (
-                            <img
-                              draggable={false}
-                              src={page.drawing}
-                              alt={`Page ${index + 1}`}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <Palette className="h-8 w-8 text-muted-foreground/25" />
-                          )}
-                        </div>
-                      )}
-
-                      {/* Current badge */}
-                      {index === currentPageIndex && (
-                        <div className={cn(
-                          "absolute top-1.5 right-1.5 text-[9px] font-bold uppercase tracking-wide rounded-full px-1.5 py-0.5 text-white",
-                          isWrite ? "bg-teal" : "bg-pink"
-                        )}>
-                          Current
-                        </div>
-                      )}
-
-                      {/* Hover overlay */}
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-                    </button>
+                    <div className="flex-1 flex">{renderSlot(rightSlot, "right")}</div>
                   </div>
                 </div>
               );
             })}
-
-            {/* Add page cell */}
-            <div className="flex flex-col gap-1.5">
-              {showViewAllAddMenu ? (
-                <div className="flex flex-col gap-2 aspect-[3/4]">
-                  <button
-                    onClick={() => { addPage("write"); setViewAll(false); setShowViewAllAddMenu(false); }}
-                    className="flex-1 rounded-xl border-2 border-dashed border-teal/50 hover:border-teal bg-teal/5 hover:bg-teal/10 transition-all flex flex-col items-center justify-center gap-1 text-teal focus:outline-none"
-                  >
-                    <BookOpen className="h-5 w-5" />
-                    <span className="text-[11px] font-semibold">Write</span>
-                  </button>
-                  <button
-                    onClick={() => { addPage("draw"); setViewAll(false); setShowViewAllAddMenu(false); }}
-                    className="flex-1 rounded-xl border-2 border-dashed border-pink/50 hover:border-pink bg-pink/5 hover:bg-pink/10 transition-all flex flex-col items-center justify-center gap-1 text-pink focus:outline-none"
-                  >
-                    <Palette className="h-5 w-5" />
-                    <span className="text-[11px] font-semibold">Draw</span>
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setShowViewAllAddMenu(true)}
-                  className="w-full aspect-[3/4] rounded-xl border-2 border-dashed border-border hover:border-primary hover:bg-primary/5 transition-all flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-primary focus:outline-none"
-                >
-                  <Plus className="h-7 w-7" />
-                  <span className="text-[11px] font-semibold">Add Page</span>
-                </button>
-              )}
-              <div className="h-4" />
-            </div>
           </div>
         </div>
       </div>
@@ -295,6 +508,7 @@ export const StoryEditor = ({
 
   // ── Editor ─────────────────────────────────────────────────────
   const isWrite = currentPage.type === "write";
+  const pageMeta = PAGE_META[currentPage.type];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-teal/10 via-yellow/10 to-pink/10 p-4 md:p-8">
@@ -305,11 +519,11 @@ export const StoryEditor = ({
             <div className="flex items-center justify-between mb-6">
               {/* Page type badge */}
               <div className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-full font-semibold text-sm shadow-sm",
-                isWrite ? "bg-teal text-white" : "bg-pink text-white"
+                "flex items-center gap-2 px-4 py-2 rounded-full font-semibold text-sm shadow-sm text-white",
+                pageMeta.dotColor
               )}>
-                {isWrite ? <BookOpen className="h-4 w-4" /> : <Palette className="h-4 w-4" />}
-                {isWrite ? "Write Page" : "Draw Page"}
+                <pageMeta.Icon className="h-4 w-4" />
+                {pageMeta.label}
               </div>
 
               <div className="flex gap-2">
@@ -377,7 +591,7 @@ export const StoryEditor = ({
                     className={cn(
                       "h-3 rounded-full transition-all",
                       index === currentPageIndex
-                        ? p.type === "write" ? "bg-teal w-8" : "bg-pink w-8"
+                        ? `${PAGE_META[p.type].dotColor} w-8`
                         : "bg-neutral w-3 hover:bg-primary/50"
                     )}
                   />
@@ -386,28 +600,46 @@ export const StoryEditor = ({
                 {/* Add page — split into two small buttons */}
                 <div className="relative">
                   <button
-                    onClick={() => setShowAddMenu((v) => !v)}
+                    onClick={() => { setShowAddMenu((v) => !v); setShowStructureSection(false); }}
                     className="w-8 h-8 rounded-full bg-lime hover:bg-lime/90 flex items-center justify-center text-foreground shadow-sm"
                     title="Add page"
                   >
                     <Plus className="h-4 w-4" />
                   </button>
                   {showAddMenu && (
-                    <div className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-white rounded-2xl shadow-xl border border-border p-2 flex flex-col gap-1 min-w-[160px] z-30">
+                    <div className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-white rounded-2xl shadow-xl border border-border p-2 flex flex-col gap-0.5 min-w-[190px] z-30">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-3 pt-1 pb-0.5">Story pages</p>
+                      {(["write", "draw"] as PageType[]).map((t) => {
+                        const m = PAGE_META[t];
+                        return (
+                          <button key={t} onClick={() => addPage(t)}
+                            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border border-neutral/30 bg-white text-foreground hover:bg-muted/40 transition-colors">
+                            <m.Icon className={cn("h-4 w-4", m.textColor)} />{m.label}
+                          </button>
+                        );
+                      })}
+                      <div className="h-px bg-border mx-2 my-1" />
+                      {/* Book Cover — collapsible drawer */}
                       <button
-                        onClick={() => addPage("write")}
-                        className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium hover:bg-teal/10 text-teal"
+                        onClick={() => setShowStructureSection(v => !v)}
+                        className="flex items-center justify-between px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider text-muted-foreground hover:bg-muted/50 transition-colors"
                       >
-                        <BookOpen className="h-4 w-4" />
-                        Write Page
+                        Book Cover
+                        <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showStructureSection ? "rotate-0" : "-rotate-90")} />
                       </button>
-                      <button
-                        onClick={() => addPage("draw")}
-                        className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium hover:bg-pink/10 text-pink"
-                      >
-                        <Palette className="h-4 w-4" />
-                        Draw Page
-                      </button>
+                      {showStructureSection && (
+                        <div className="flex flex-col gap-0.5">
+                          {(["cover", "inside-cover", "inside-back-cover", "back-cover"] as PageType[]).map((t) => {
+                            const m = PAGE_META[t];
+                            return (
+                              <button key={t} onClick={() => addPage(t)}
+                                className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border border-neutral/30 bg-white text-foreground hover:bg-muted/40 transition-colors">
+                                <m.Icon className="h-4 w-4 text-orange" />{m.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
