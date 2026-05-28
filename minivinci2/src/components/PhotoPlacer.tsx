@@ -202,8 +202,8 @@ export const PhotoPlacer = ({ image, canvasWidth, canvasHeight, onCommit, onCanc
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50" />
+      {/* Backdrop — click outside the photo to dismiss */}
+      <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
 
       {/* ── Photo: draggable + resizable ── */}
       {!cropping && (
