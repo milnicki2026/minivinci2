@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Eraser, Trash2, Brush, Droplet, SprayCan, Highlighter, Pencil, Undo2, Redo2, Camera, ImagePlus } from "lucide-react";
+import { Eraser, Trash2, Brush, Droplet, SprayCan, Highlighter, Pencil, Undo2, Redo2, Camera, ImagePlus, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ColorWheel } from "./ColorWheel";
 import { AnimalPicker } from "./AnimalPicker";
 import type { Stamp } from "./AnimalPicker";
 import { PhotoPlacer } from "./PhotoPlacer";
 import { CameraCapture } from "./CameraCapture";
+import { generateImage } from "@/lib/stabilityAI";
+import { toast } from "sonner";
 
 const COLORS = [
   { name: "Red", value: "#FF3333" },
@@ -46,9 +48,10 @@ interface DrawingCanvasProps {
   initialImage?: string;
   stamps?: Stamp[];
   stampsLoading?: boolean;
+  storyText?: string;
 }
 
-export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading = false }: DrawingCanvasProps) => {
+export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading = false, storyText = "" }: DrawingCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [color, setColor] = useState(COLORS[0].value);
@@ -60,6 +63,7 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
   const [historyStep, setHistoryStep] = useState(-1);
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
   const [showCamera, setShowCamera] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const uploadInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -370,6 +374,29 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
     setPhotoDataUrl(null);
   };
 
+  const handleGenerateImage = async () => {
+    if (isGenerating) return;
+    setIsGenerating(true);
+    try {
+      const prompt = storyText.trim() || "a cheerful colorful children's book scene";
+      const dataUrl = await generateImage(prompt);
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      const img = new Image();
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        saveToHistory();
+      };
+      img.src = dataUrl;
+    } catch {
+      toast.error("Could not generate illustration. Please try again.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   return (
     <div className="flex gap-6 items-start">
       {/* Left side - Canvas and tools */}
@@ -576,6 +603,20 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
             <Trash2 className="mr-2 h-5 w-5" />
             Clear
           </Button>
+        </div>
+
+        {/* AI illustration — small button, 1/4 the footprint of Clear */}
+        <div className="flex justify-center">
+          <button
+            onClick={handleGenerateImage}
+            disabled={isGenerating}
+            title="Generate illustration from story"
+            className="w-8 h-8 rounded-full flex items-center justify-center border border-border/60 bg-background text-muted-foreground hover:border-purple-400 hover:text-purple-500 hover:bg-purple-50 transition-all hover:scale-110 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {isGenerating
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : <Sparkles className="h-3.5 w-3.5" />}
+          </button>
         </div>
       </div>
     </div>
