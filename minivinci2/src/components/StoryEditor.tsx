@@ -135,7 +135,7 @@ export const StoryEditor = ({ initialStory, storySetup }: { initialStory?: strin
                     Page {currentPageIndex + 1} of {pages.length}
                   </div>
                   <Textarea value={currentPage.text} onChange={e => updatePageText(e.target.value)} placeholder="Once upon a time..." className="min-h-[400px] text-lg border-2 border-border rounded-2xl resize-none focus-visible:ring-2 focus-visible:ring-primary" />
-                </div> : <DrawingCanvas pageId={currentPage.id} initialImage={currentPage.drawing} stamps={stamps} stampsLoading={stampsLoading} />}
+                </div> : <DrawingCanvas pageId={currentPage.id} initialImage={currentPage.drawing} stamps={stamps} stampsLoading={stampsLoading} storyText={currentPage.text} />}
             </div>
 
             {/* Navigation */}
