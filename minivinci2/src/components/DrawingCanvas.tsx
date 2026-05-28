@@ -11,14 +11,6 @@ import { generateImage } from "@/lib/stabilityAI";
 import { toast } from "sonner";
 
 const COLORS = [
-  { name: "Red", value: "#FF3333" },
-  { name: "Orange Red", value: "#FF6633" },
-  { name: "Orange", value: "#FF9933" },
-  { name: "Yellow Orange", value: "#FFBB33" },
-  { name: "Yellow", value: "#FFCC33" },
-  { name: "Yellow Green", value: "#CCCC66" },
-  { name: "Lime", value: "#99CC66" },
-  { name: "Green", value: "#66CC66" },
   { name: "Teal", value: "#66CC99" },
   { name: "Cyan", value: "#66CCCC" },
   { name: "Sky Blue", value: "#66BBFF" },
@@ -29,6 +21,14 @@ const COLORS = [
   { name: "Magenta", value: "#FF66CC" },
   { name: "Pink", value: "#FF6699" },
   { name: "Rose", value: "#FF3366" },
+  { name: "Red", value: "#FF3333" },
+  { name: "Orange Red", value: "#FF6633" },
+  { name: "Orange", value: "#FF9933" },
+  { name: "Yellow Orange", value: "#FFBB33" },
+  { name: "Yellow", value: "#FFCC33" },
+  { name: "Yellow Green", value: "#CCCC66" },
+  { name: "Lime", value: "#99CC66" },
+  { name: "Green", value: "#66CC66" },
 ];
 
 const BRUSH_SIZES = [2, 5, 10, 20];
