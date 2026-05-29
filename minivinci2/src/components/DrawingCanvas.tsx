@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Eraser, Trash2, Brush, Droplet, SprayCan, Highlighter, Pencil, Undo2, Redo2, Camera, ImagePlus, Sparkles, Loader2, MousePointer } from "lucide-react";
+import { Eraser, Trash2, Brush, Droplet, SprayCan, Highlighter, Pencil, Undo2, Redo2, Camera, ImagePlus, Sparkles, Loader2, MousePointer, Circle, Square, Triangle, Star, Heart, Diamond, Hexagon, Pentagon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ColorWheel } from "./ColorWheel";
 import { AnimalPicker } from "./AnimalPicker";
@@ -43,6 +43,18 @@ const BRUSH_TYPES = [
 
 type BrushType = typeof BRUSH_TYPES[number]["value"];
 
+const SHAPES = [
+  { name: "circle",   label: "Circle",   Icon: Circle   },
+  { name: "square",   label: "Square",   Icon: Square   },
+  { name: "triangle", label: "Triangle", Icon: Triangle },
+  { name: "star",     label: "Star",     Icon: Star     },
+  { name: "heart",    label: "Heart",    Icon: Heart    },
+  { name: "diamond",  label: "Diamond",  Icon: Diamond  },
+  { name: "hexagon",  label: "Hexagon",  Icon: Hexagon  },
+  { name: "pentagon", label: "Pentagon", Icon: Pentagon },
+] as const;
+type ShapeName = typeof SHAPES[number]["name"];
+
 interface DrawingCanvasProps {
   pageId: string;
   initialImage?: string;
@@ -50,9 +62,10 @@ interface DrawingCanvasProps {
   stampsLoading?: boolean;
   storyText?: string;
   onDrawingChange?: (dataUrl: string) => void;
+  backgroundStyle?: string; // overrides the default paper-texture CSS background
 }
 
-export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading = false, storyText = "", onDrawingChange }: DrawingCanvasProps) => {
+export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading = false, storyText = "", onDrawingChange, backgroundStyle }: DrawingCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [color, setColor] = useState(COLORS[0].value);
@@ -66,6 +79,8 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
   const [showCamera, setShowCamera] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
+  const [selectedShape, setSelectedShape] = useState<ShapeName | null>(null);
+  const [showShapePicker, setShowShapePicker] = useState(false);
   const [selectionRect, setSelectionRect] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null);
   const [floatingSelection, setFloatingSelection] = useState<{ x: number; y: number; w: number; h: number; dataUrl: string } | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -155,6 +170,8 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
     }
     if (selectedAnimal) {
       stampAnimal(e);
+    } else if (selectedShape) {
+      stampShape(e);
     } else {
       setIsDrawing(true);
       draw(e);
@@ -204,6 +221,83 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
       setSelectedAnimal(null);
     };
     img.src = selectedAnimal.image;
+  };
+
+  const stampShape = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !selectedShape) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const r = brushSize * 8;
+
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+
+    switch (selectedShape) {
+      case "circle":
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        break;
+      case "square":
+        ctx.rect(x - r, y - r, r * 2, r * 2);
+        break;
+      case "triangle":
+        ctx.moveTo(x, y - r);
+        ctx.lineTo(x + r * Math.cos(Math.PI / 6), y + r / 2);
+        ctx.lineTo(x - r * Math.cos(Math.PI / 6), y + r / 2);
+        ctx.closePath();
+        break;
+      case "star": {
+        const inner = r * 0.4;
+        for (let i = 0; i < 10; i++) {
+          const angle = (i * Math.PI) / 5 - Math.PI / 2;
+          const rad = i % 2 === 0 ? r : inner;
+          if (i === 0) ctx.moveTo(x + rad * Math.cos(angle), y + rad * Math.sin(angle));
+          else ctx.lineTo(x + rad * Math.cos(angle), y + rad * Math.sin(angle));
+        }
+        ctx.closePath();
+        break;
+      }
+      case "heart":
+        ctx.moveTo(x, y + r * 0.6);
+        ctx.bezierCurveTo(x, y + r * 0.1, x - r, y - r * 0.2, x - r, y - r * 0.45);
+        ctx.bezierCurveTo(x - r, y - r, x - r * 0.1, y - r, x, y - r * 0.4);
+        ctx.bezierCurveTo(x + r * 0.1, y - r, x + r, y - r, x + r, y - r * 0.45);
+        ctx.bezierCurveTo(x + r, y - r * 0.2, x, y + r * 0.1, x, y + r * 0.6);
+        ctx.closePath();
+        break;
+      case "diamond":
+        ctx.moveTo(x, y - r);
+        ctx.lineTo(x + r * 0.6, y);
+        ctx.lineTo(x, y + r);
+        ctx.lineTo(x - r * 0.6, y);
+        ctx.closePath();
+        break;
+      case "hexagon":
+        for (let i = 0; i < 6; i++) {
+          const angle = (i * Math.PI) / 3 - Math.PI / 6;
+          if (i === 0) ctx.moveTo(x + r * Math.cos(angle), y + r * Math.sin(angle));
+          else ctx.lineTo(x + r * Math.cos(angle), y + r * Math.sin(angle));
+        }
+        ctx.closePath();
+        break;
+      case "pentagon":
+        for (let i = 0; i < 5; i++) {
+          const angle = (i * 2 * Math.PI) / 5 - Math.PI / 2;
+          if (i === 0) ctx.moveTo(x + r * Math.cos(angle), y + r * Math.sin(angle));
+          else ctx.lineTo(x + r * Math.cos(angle), y + r * Math.sin(angle));
+        }
+        ctx.closePath();
+        break;
+    }
+
+    ctx.fill();
+    ctx.restore();
+    saveToHistory();
   };
 
   const stopDrawing = () => {
@@ -531,14 +625,14 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
               )}
               style={{
                 touchAction: "none",
-                background: `
+                background: backgroundStyle ?? `
                   linear-gradient(0deg, transparent 24%, rgba(255, 255, 255, .05) 25%, rgba(255, 255, 255, .05) 26%, transparent 27%, transparent 74%, rgba(255, 255, 255, .05) 75%, rgba(255, 255, 255, .05) 76%, transparent 77%, transparent),
                   linear-gradient(90deg, transparent 24%, rgba(255, 255, 255, .05) 25%, rgba(255, 255, 255, .05) 26%, transparent 27%, transparent 74%, rgba(255, 255, 255, .05) 75%, rgba(255, 255, 255, .05) 76%, transparent 77%, transparent),
                   linear-gradient(90deg, transparent, rgba(230, 230, 220, 0.3) 50%, transparent),
                   linear-gradient(0deg, transparent, rgba(240, 240, 235, 0.2) 50%, transparent),
                   #fdfcf8
                 `,
-                backgroundSize: "50px 50px, 50px 50px, 100% 100%, 100% 100%",
+                backgroundSize: backgroundStyle ? "cover" : "50px 50px, 50px 50px, 100% 100%, 100% 100%",
               }}
             />
             {/* Selection: drawing rect */}
@@ -738,8 +832,52 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
           loading={stampsLoading}
         />
 
+        {/* Shape Selector */}
+        <div className="flex flex-col gap-2">
+          <div className="relative flex justify-center">
+            <button
+              title={selectedShape ? SHAPES.find(s => s.name === selectedShape)?.label : "Shapes"}
+              onClick={() => setShowShapePicker(v => !v)}
+              className={cn(
+                "w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all hover:scale-110",
+                selectedShape
+                  ? "border-primary bg-primary/10 text-primary scale-110"
+                  : "border-border bg-background hover:border-primary hover:bg-primary/10"
+              )}
+            >
+              {(() => { const S = selectedShape ? SHAPES.find(s => s.name === selectedShape) : SHAPES[0]; return S ? <S.Icon className="h-4 w-4" /> : null; })()}
+            </button>
+            {showShapePicker && (
+              <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-white rounded-2xl shadow-xl border border-border p-2 z-50">
+                <div className="grid grid-cols-4 gap-1.5">
+                  {SHAPES.map((shape) => (
+                    <button
+                      key={shape.name}
+                      title={shape.label}
+                      onClick={() => {
+                        const next = selectedShape === shape.name ? null : shape.name;
+                        setSelectedShape(next);
+                        setShowShapePicker(false);
+                        if (next) { setSelectedAnimal(null); setIsEraser(false); if (selectMode) { commitFloatingSelection(); setSelectMode(false); } }
+                      }}
+                      className={cn(
+                        "w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all hover:scale-110",
+                        selectedShape === shape.name
+                          ? "border-primary bg-primary/10 text-primary scale-110"
+                          : "border-border bg-background hover:border-primary hover:bg-primary/10"
+                      )}
+                    >
+                      <shape.Icon className="h-4 w-4" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Color Wheel */}
-        <ColorWheel 
+        <ColorWheel
           colors={COLORS}
           selectedColor={color}
           onColorSelect={(newColor) => {

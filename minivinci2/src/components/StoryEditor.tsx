@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { DrawingCanvas } from "./DrawingCanvas";
 import {
   BookOpen, Palette, ChevronLeft, ChevronRight, ChevronDown, Plus,
-  Eye, Printer, LayoutGrid, X, GripVertical, Star, BookMarked,
+  Eye, Printer, LayoutGrid, X, GripVertical, Star, BookMarked, Type, Layers, Upload, Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { generateStamp } from "@/lib/stabilityAI";
@@ -21,11 +21,27 @@ type PageType =
   | "inside-back-cover"
   | "back-cover";
 
+interface TextBox {
+  id: string;
+  x: number; // px from canvas container left
+  y: number; // px from canvas container top
+  text: string;
+  font?: string; // Google Font family name
+}
+
+type CoverBackground =
+  | { kind: "solid";      color: string; opacity?: number }
+  | { kind: "gradient";   css: string   }
+  | { kind: "watercolor"; color: string }
+  | { kind: "image";      url: string   };
+
 interface StoryPage {
   id: string;
   type: PageType;
   text: string;
   drawing?: string;
+  textBoxes?: TextBox[];
+  background?: CoverBackground;
 }
 
 // Metadata for every page type — colours, labels, icons
@@ -87,6 +103,98 @@ const PAGE_META: Record<
   },
 };
 
+// Curated free Google Fonts for the cover text tool
+const COVER_FONTS: { name: string; label: string }[] = [
+  { name: "Pacifico",          label: "Pacifico"   },
+  { name: "Fredoka One",       label: "Fredoka"    },
+  { name: "Bubblegum Sans",    label: "Bubblegum"  },
+  { name: "Bangers",           label: "Bangers"    },
+  { name: "Permanent Marker",  label: "Marker"     },
+  { name: "Caveat",            label: "Caveat"     },
+  { name: "Luckiest Guy",      label: "Luckiest"   },
+  { name: "Lilita One",        label: "Lilita"     },
+];
+
+const BG_PALETTE = [
+  "#C4694F", "#D4944A", "#D4B050", "#7BAD72", "#5790BC", "#8B6BAD",
+  "#C47A8A", "#8B3A5A", "#7A9050", "#5A9090", "#4A5E8A", "#AA8870",
+];
+
+const GRADIENT_PRESETS: { label: string; css: string }[] = [
+  { label: "Sunset",       css: "linear-gradient(135deg, #f97316, #ec4899, #8b5cf6)" },
+  { label: "Ocean",        css: "linear-gradient(180deg, #38bdf8, #0284c7, #1e3a5f)" },
+  { label: "Aurora",       css: "linear-gradient(135deg, #34d399, #06b6d4, #818cf8)" },
+  { label: "Golden",       css: "linear-gradient(135deg, #fcd34d, #f97316, #dc2626)" },
+  { label: "Cotton Candy", css: "linear-gradient(135deg, #f9a8d4, #c4b5fd, #93c5fd)" },
+  { label: "Mint",         css: "linear-gradient(135deg, #bbf7d0, #2dd4bf, #0369a1)" },
+  { label: "Rose Gold",    css: "linear-gradient(135deg, #fda4af, #f9a8d4, #fde68a)" },
+  { label: "Storm",        css: "linear-gradient(180deg, #94a3b8, #334155, #0f172a)" },
+  { label: "Forest",       css: "linear-gradient(180deg, #86efac, #16a34a, #14532d)" },
+  { label: "Bubblegum",    css: "linear-gradient(135deg, #fda4af, #f43f5e, #be185d)" },
+  { label: "Sky",          css: "linear-gradient(180deg, #e0f2fe, #38bdf8, #0369a1)" },
+  { label: "Twilight",     css: "linear-gradient(180deg, #c4b5fd, #7c3aed, #1e1b4b)" },
+];
+
+const getCoverBgStyle = (bg: CoverBackground | undefined): string | undefined => {
+  if (!bg) return undefined;
+  if (bg.kind === "solid") {
+    const op = bg.opacity ?? 100;
+    if (op < 100) {
+      const r = parseInt(bg.color.slice(1, 3), 16);
+      const g = parseInt(bg.color.slice(3, 5), 16);
+      const b = parseInt(bg.color.slice(5, 7), 16);
+      return `rgba(${r},${g},${b},${(op / 100).toFixed(2)})`;
+    }
+    return bg.color;
+  }
+  if (bg.kind === "gradient") return bg.css;
+  if (bg.kind === "watercolor") {
+    return [
+      // ── FOUNDATION: full-width top wash (forces top to near-white) ─
+      `linear-gradient(180deg, rgba(255,255,255,0.90) 0%, rgba(255,255,255,0.58) 18%, rgba(255,255,255,0.20) 40%, transparent 58%)`,
+
+      // ── DIRECTIONAL BRUSHSTROKES (organic variation) ──────────────
+      `linear-gradient(135deg, rgba(255,255,255,0.68) 0%, rgba(255,255,255,0.25) 30%, transparent 50%)`,
+      `linear-gradient(225deg, rgba(255,255,255,0.48) 0%, rgba(255,255,255,0.15) 28%, transparent 46%)`,
+
+      // ── RADIAL CLOUD BLOOMS ───────────────────────────────────────
+      // Main top-center bloom (sits ON the canvas at y=0%)
+      `radial-gradient(ellipse 82% 58% at 48% 0%, rgba(255,255,255,0.94) 0%, rgba(255,255,255,0.60) 32%, rgba(255,255,255,0.18) 58%, transparent 72%)`,
+      // Upper-left cloud
+      `radial-gradient(ellipse 58% 50% at -5% 6%, rgba(255,255,255,0.90) 0%, rgba(255,255,255,0.45) 38%, transparent 64%)`,
+      // Right-side secondary bloom
+      `radial-gradient(ellipse 50% 40% at 108% 20%, rgba(255,255,255,0.84) 0%, rgba(255,255,255,0.35) 44%, transparent 68%)`,
+      // Bright water-droplet spot
+      `radial-gradient(ellipse 16% 11% at 62% 2%, rgba(255,255,255,0.99) 0%, rgba(255,255,255,0.60) 42%, transparent 76%)`,
+      // Upper-left secondary detail
+      `radial-gradient(ellipse 26% 16% at 22% 20%, rgba(255,255,255,0.72) 0%, transparent 68%)`,
+      // Mid-body irregular patch
+      `radial-gradient(ellipse 28% 18% at 70% 36%, rgba(255,255,255,0.44) 0%, transparent 70%)`,
+      // Lower ghost highlight
+      `radial-gradient(ellipse 22% 16% at 35% 58%, rgba(255,255,255,0.32) 0%, transparent 65%)`,
+
+      // ── TIDE-MARK RINGS (dried paint boundary lines) ──────────────
+      `radial-gradient(ellipse 76% 46% at 48% 2%, transparent 60%, rgba(0,0,0,0.12) 68%, transparent 82%)`,
+      `radial-gradient(ellipse 52% 46% at -4% 8%, transparent 58%, rgba(0,0,0,0.09) 67%, transparent 80%)`,
+
+      // ── DARK ZONES (concentrated pigment at edges/bottom) ─────────
+      // Bottom-left corner — deepest shadow
+      `radial-gradient(ellipse 65% 52% at -15% 118%, rgba(0,0,0,0.46) 0%, rgba(0,0,0,0.20) 42%, transparent 70%)`,
+      // Bottom edge band
+      `radial-gradient(ellipse 125% 28% at 50% 122%, rgba(0,0,0,0.36) 0%, transparent 60%)`,
+      // Bottom-right pooling
+      `radial-gradient(ellipse 50% 44% at 118% 110%, rgba(0,0,0,0.32) 0%, rgba(0,0,0,0.10) 50%, transparent 74%)`,
+      // Right-edge mid
+      `radial-gradient(ellipse 20% 42% at 104% 54%, rgba(0,0,0,0.18) 0%, transparent 62%)`,
+      // Left-edge
+      `radial-gradient(ellipse 16% 46% at 0% 66%, rgba(0,0,0,0.15) 0%, transparent 64%)`,
+
+      bg.color,
+    ].join(", ");
+  }
+  if (bg.kind === "image") return `url(${bg.url}) center/cover no-repeat`;
+};
+
 // All non-write types use the drawing canvas
 const isCanvasType = (t: PageType) => t !== "write";
 
@@ -118,6 +226,11 @@ export const StoryEditor = ({
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [showViewAllAddMenu, setShowViewAllAddMenu] = useState(false);
   const [showStructureSection, setShowStructureSection] = useState(false);
+  const [textToolActive, setTextToolActive] = useState(false);
+  const [newTextBoxId, setNewTextBoxId] = useState<string | null>(null);
+  const [showBgMenu, setShowBgMenu] = useState(false);
+  const [bgMenuTab, setBgMenuTab] = useState<"solid" | "gradient" | "watercolor" | "image">("solid");
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!storySetup) return;
@@ -146,6 +259,14 @@ export const StoryEditor = ({
     });
   };
 
+  const updateBackground = (bg: CoverBackground | undefined) => {
+    setPages((prev) => {
+      const next = [...prev];
+      next[currentPageIndex] = { ...next[currentPageIndex], background: bg };
+      return next;
+    });
+  };
+
   const addPage = (type: PageType) => {
     const newPage: StoryPage = {
       id: Date.now().toString(),
@@ -165,6 +286,24 @@ export const StoryEditor = ({
       setShowStructureSection(false);
     }
   }, [viewAll]);
+
+  // Reset text tool and background menu when navigating pages
+  useEffect(() => {
+    setTextToolActive(false);
+    setShowBgMenu(false);
+  }, [currentPageIndex]);
+
+  // Inject Google Fonts for the cover text tool (runs once)
+  useEffect(() => {
+    const id = "cover-google-fonts";
+    if (document.getElementById(id)) return;
+    const link = document.createElement("link");
+    link.id = id;
+    link.rel = "stylesheet";
+    link.href =
+      "https://fonts.googleapis.com/css2?family=Pacifico&family=Fredoka+One&family=Bubblegum+Sans&family=Bangers&family=Permanent+Marker&family=Caveat:wght@400;700&family=Luckiest+Guy&family=Lilita+One&display=swap";
+    document.head.appendChild(link);
+  }, []);
 
   const goToNextPage = () => {
     if (currentPageIndex < pages.length - 1) setCurrentPageIndex((i) => i + 1);
@@ -516,24 +655,20 @@ export const StoryEditor = ({
         {!isPreview ? (
           <>
             {/* Top bar */}
-            <div className="flex items-center justify-between mb-6">
-              {/* Page type badge */}
-              <div className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-full font-semibold text-sm shadow-sm text-white",
-                pageMeta.dotColor
-              )}>
-                <pageMeta.Icon className="h-4 w-4" />
-                {pageMeta.label}
-              </div>
-
+            <div className="flex items-center justify-end mb-6">
               <div className="flex gap-2">
-                <Button onClick={handlePrint} className="bg-orange hover:bg-orange/90 text-white rounded-full px-6">
+                <Button
+                  onClick={handlePrint}
+                  variant="outline"
+                  className="rounded-full px-6 border-orange text-orange hover:bg-orange hover:text-white"
+                >
                   <Printer className="mr-2 h-5 w-5" />
                   Print
                 </Button>
                 <Button
                   onClick={() => setIsPreview(true)}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-full px-6"
+                  variant="outline"
+                  className="rounded-full px-6 border-primary text-primary hover:bg-primary hover:text-primary-foreground"
                 >
                   <Eye className="mr-2 h-5 w-5" />
                   Preview
@@ -543,8 +678,11 @@ export const StoryEditor = ({
 
             {/* Editor area */}
             <div className="bg-white rounded-3xl shadow-2xl p-6 md:p-8 mb-6">
-              <div className="text-sm font-semibold text-muted-foreground mb-4">
-                Page {currentPageIndex + 1} of {pages.length}
+              <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground mb-4">
+                <pageMeta.Icon className={cn("h-8 w-8", pageMeta.textColor)} strokeWidth={1.5} />
+                <span className={pageMeta.textColor}>{pageMeta.label}</span>
+                <span>·</span>
+                <span>Page {currentPageIndex + 1} of {pages.length}</span>
               </div>
               {isWrite ? (
                 <Textarea
@@ -554,20 +692,402 @@ export const StoryEditor = ({
                   className="min-h-[400px] text-lg border-2 border-border rounded-2xl resize-none focus-visible:ring-2 focus-visible:ring-teal"
                 />
               ) : (
-                <DrawingCanvas
-                  pageId={currentPage.id}
-                  initialImage={currentPage.drawing}
-                  stamps={stamps}
-                  stampsLoading={stampsLoading}
-                  storyText={currentPage.text}
-                  onDrawingChange={(dataUrl) =>
-                    setPages((prev) => {
-                      const next = [...prev];
-                      next[currentPageIndex] = { ...next[currentPageIndex], drawing: dataUrl };
-                      return next;
-                    })
-                  }
-                />
+                <>
+                  {/* Cover page toolbar */}
+                  {currentPage.type === "cover" && (
+                    <div className="flex items-center gap-2 mb-4">
+                      {/* Add Text toggle */}
+                      <button
+                        onClick={() => { setTextToolActive((v) => !v); setShowBgMenu(false); }}
+                        className={cn(
+                          "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold border transition-colors",
+                          textToolActive
+                            ? "bg-yellow/20 border-yellow text-orange"
+                            : "border-border bg-white text-muted-foreground hover:bg-muted/50"
+                        )}
+                      >
+                        <Type className="h-4 w-4" />
+                        {textToolActive ? "Click canvas to place…" : "Add Text"}
+                      </button>
+
+                      {/* Add Background */}
+                      <div className="relative">
+                        <button
+                          onClick={() => {
+                            setTextToolActive(false);
+                            if (!showBgMenu) setBgMenuTab(currentPage.background?.kind ?? "solid" as "solid" | "gradient" | "watercolor" | "image");
+                            setShowBgMenu((v) => !v);
+                          }}
+                          className={cn(
+                            "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold border transition-colors",
+                            showBgMenu || currentPage.background
+                              ? "bg-yellow/20 border-yellow text-orange"
+                              : "border-border bg-white text-muted-foreground hover:bg-muted/50"
+                          )}
+                        >
+                          <Layers className="h-4 w-4" />
+                          Add Background
+                        </button>
+
+                        {showBgMenu && (
+                          <div className="absolute top-full left-0 mt-2 bg-white rounded-2xl shadow-xl border border-border p-3 z-40 w-64">
+                            {/* Tab row */}
+                            <div className="flex gap-1 mb-3">
+                              {(["solid", "gradient", "watercolor", "image"] as const).map((tab) => (
+                                <button
+                                  key={tab}
+                                  onClick={() => setBgMenuTab(tab)}
+                                  className={cn(
+                                    "flex-1 py-1.5 rounded-lg text-[10px] font-semibold transition-colors",
+                                    bgMenuTab === tab
+                                      ? "bg-yellow/30 text-orange border border-yellow/60"
+                                      : "bg-muted/40 text-muted-foreground hover:bg-muted/60"
+                                  )}
+                                >
+                                  {tab === "solid" ? "Solid" : tab === "gradient" ? "Gradient" : tab === "watercolor" ? "Watercolour" : "Image"}
+                                </button>
+                              ))}
+                            </div>
+
+                            {/* Solid */}
+                            {bgMenuTab === "solid" && (
+                              <>
+                                <div className="grid grid-cols-6 gap-1.5 px-3">
+                                  {BG_PALETTE.map((c) => (
+                                    <button
+                                      key={c}
+                                      style={{ background: c }}
+                                      onClick={() => updateBackground({
+                                        kind: "solid",
+                                        color: c,
+                                        opacity: currentPage.background?.kind === "solid"
+                                          ? currentPage.background.opacity
+                                          : 100,
+                                      })}
+                                      className={cn(
+                                        "w-8 h-8 rounded-full transition-transform hover:scale-110",
+                                        currentPage.background?.kind === "solid" && currentPage.background.color === c
+                                          ? "scale-110 ring-2 ring-offset-1 ring-foreground/50"
+                                          : ""
+                                      )}
+                                    />
+                                  ))}
+                                </div>
+                                {currentPage.background?.kind === "solid" && (
+                                  <div className="mt-3 flex items-center gap-2">
+                                    <span className="text-[10px] text-muted-foreground font-semibold w-10 shrink-0">Opacity</span>
+                                    <input
+                                      type="range"
+                                      min={10}
+                                      max={100}
+                                      step={5}
+                                      value={currentPage.background.opacity ?? 100}
+                                      onChange={(e) => {
+                                        if (currentPage.background?.kind === "solid") {
+                                          updateBackground({ ...currentPage.background, opacity: Number(e.target.value) });
+                                        }
+                                      }}
+                                      className="flex-1 h-1.5 accent-neutral cursor-pointer"
+                                    />
+                                    <span className="text-[10px] text-muted-foreground font-semibold w-7 text-right shrink-0">
+                                      {currentPage.background.opacity ?? 100}%
+                                    </span>
+                                  </div>
+                                )}
+                              </>
+                            )}
+
+                            {/* Gradient */}
+                            {bgMenuTab === "gradient" && (
+                              <div className="grid grid-cols-6 gap-1.5 px-3">
+                                {GRADIENT_PRESETS.map((g) => (
+                                  <button
+                                    key={g.css}
+                                    title={g.label}
+                                    style={{ background: g.css }}
+                                    onClick={() => updateBackground({ kind: "gradient", css: g.css })}
+                                    className={cn(
+                                      "w-8 h-8 rounded-full transition-transform hover:scale-110",
+                                      currentPage.background?.kind === "gradient" && currentPage.background.css === g.css
+                                        ? "scale-110 ring-2 ring-offset-1 ring-foreground/50"
+                                        : ""
+                                    )}
+                                  />
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Watercolour */}
+                            {bgMenuTab === "watercolor" && (
+                              <>
+                                {currentPage.background?.kind === "watercolor" && (
+                                  <div
+                                    className="w-full h-10 rounded-lg mb-2.5"
+                                    style={{ background: getCoverBgStyle(currentPage.background) }}
+                                  />
+                                )}
+                                <div className="grid grid-cols-6 gap-1.5 px-3">
+                                  {BG_PALETTE.map((c) => (
+                                    <button
+                                      key={c}
+                                      style={{ background: getCoverBgStyle({ kind: "watercolor", color: c }) }}
+                                      onClick={() => updateBackground({ kind: "watercolor", color: c })}
+                                      className={cn(
+                                        "w-8 h-8 rounded-full transition-transform hover:scale-110",
+                                        currentPage.background?.kind === "watercolor" && currentPage.background.color === c
+                                          ? "scale-110 ring-2 ring-offset-1 ring-foreground/50"
+                                          : ""
+                                      )}
+                                    />
+                                  ))}
+                                </div>
+                              </>
+                            )}
+
+                            {/* Image upload */}
+                            {bgMenuTab === "image" && (
+                              <div className="flex flex-col gap-2">
+                                <label className="flex flex-col items-center gap-2 p-4 border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-primary hover:bg-muted/20 transition-colors">
+                                  <Upload className="h-6 w-6 text-muted-foreground" />
+                                  <span className="text-xs text-muted-foreground font-medium text-center">Click to upload image</span>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0];
+                                      if (!file) return;
+                                      const reader = new FileReader();
+                                      reader.onload = (ev) => {
+                                        const url = ev.target?.result as string;
+                                        updateBackground({ kind: "image", url });
+                                        setShowBgMenu(false);
+                                      };
+                                      reader.readAsDataURL(file);
+                                    }}
+                                  />
+                                </label>
+                                {currentPage.background?.kind === "image" && (
+                                  <div
+                                    className="w-full h-16 rounded-xl bg-cover bg-center border border-border"
+                                    style={{ backgroundImage: `url(${currentPage.background.url})` }}
+                                  />
+                                )}
+                              </div>
+                            )}
+
+                            {/* Remove */}
+                            {currentPage.background && (
+                              <button
+                                onClick={() => { updateBackground(undefined); setShowBgMenu(false); }}
+                                className="mt-3 w-full flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                                Remove background
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Canvas + optional text overlay */}
+                  <div className="relative" ref={canvasContainerRef}>
+                    <DrawingCanvas
+                      pageId={currentPage.id}
+                      initialImage={currentPage.drawing}
+                      stamps={stamps}
+                      stampsLoading={stampsLoading}
+                      storyText={currentPage.text}
+                      backgroundStyle={getCoverBgStyle(currentPage.background)}
+                      onDrawingChange={(dataUrl) =>
+                        setPages((prev) => {
+                          const next = [...prev];
+                          next[currentPageIndex] = { ...next[currentPageIndex], drawing: dataUrl };
+                          return next;
+                        })
+                      }
+                    />
+
+                    {currentPage.type === "cover" && (
+                      <div
+                        className={cn(
+                          "absolute inset-0 overflow-hidden",
+                          textToolActive ? "cursor-crosshair" : "pointer-events-none"
+                        )}
+                        onClick={(e) => {
+                          if (!textToolActive) return;
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const id = Date.now().toString();
+                          setPages((prev) => {
+                            const next = [...prev];
+                            const page = next[currentPageIndex];
+                            next[currentPageIndex] = {
+                              ...page,
+                              textBoxes: [
+                                ...(page.textBoxes ?? []),
+                                { id, x: e.clientX - rect.left, y: e.clientY - rect.top, text: "" },
+                              ],
+                            };
+                            return next;
+                          });
+                          setNewTextBoxId(id);
+                          setTextToolActive(false);
+                        }}
+                      >
+                        {(currentPage.textBoxes ?? []).map((tb) => (
+                          <div
+                            key={tb.id}
+                            style={{ position: "absolute", left: tb.x, top: tb.y, pointerEvents: "auto" }}
+                            className="group cursor-grab active:cursor-grabbing"
+                            onMouseDown={(e) => {
+                              // If clicking directly on the input, don't prevent default so the
+                              // browser sets the cursor position naturally. For all other areas,
+                              // prevent default to avoid text-selection side-effects.
+                              const isInput = (e.target as HTMLElement).tagName === "INPUT";
+                              if (!isInput) e.preventDefault();
+                              e.stopPropagation();
+
+                              const startX = e.clientX;
+                              const startY = e.clientY;
+                              const origX = tb.x;
+                              const origY = tb.y;
+                              const id = tb.id;
+                              let hasDragged = false;
+
+                              // Use offsetWidth/offsetHeight (CSS layout px) — these are unaffected
+                              // by viewport scroll, ancestor transforms, or absolutely-positioned
+                              // overflow children (e.g. the font picker above the box).
+                              const containerEl = canvasContainerRef.current;
+                              const boxEl = e.currentTarget as HTMLElement;
+                              const containerW = containerEl?.offsetWidth  ?? Infinity;
+                              const containerH = containerEl?.offsetHeight ?? Infinity;
+                              const boxW = boxEl.offsetWidth;
+                              const boxH = boxEl.offsetHeight;
+                              const maxX = Math.max(0, containerW - boxW);
+                              const maxY = Math.max(0, containerH - boxH);
+
+                              const onMove = (ev: MouseEvent) => {
+                                const dx = ev.clientX - startX;
+                                const dy = ev.clientY - startY;
+                                // Only commit to drag once the pointer has moved past the threshold
+                                if (!hasDragged && Math.hypot(dx, dy) < 5) return;
+                                if (!hasDragged) {
+                                  hasDragged = true;
+                                  document.body.style.userSelect = "none";
+                                }
+                                const clampedX = Math.max(0, Math.min(origX + dx, maxX));
+                                const clampedY = Math.max(0, Math.min(origY + dy, maxY));
+                                setPages((prev) => {
+                                  const next = [...prev];
+                                  const page = next[currentPageIndex];
+                                  next[currentPageIndex] = {
+                                    ...page,
+                                    textBoxes: (page.textBoxes ?? []).map((t) =>
+                                      t.id === id ? { ...t, x: clampedX, y: clampedY } : t
+                                    ),
+                                  };
+                                  return next;
+                                });
+                              };
+
+                              const onUp = () => {
+                                document.body.style.userSelect = "";
+                                window.removeEventListener("mousemove", onMove);
+                                window.removeEventListener("mouseup", onUp);
+                              };
+
+                              window.addEventListener("mousemove", onMove);
+                              window.addEventListener("mouseup", onUp);
+                            }}
+                          >
+                            {/* Font picker — floats below the box on hover */}
+                            <div className="absolute top-full left-0 mt-1.5 hidden group-hover:flex flex-wrap gap-1 bg-white/95 backdrop-blur-sm rounded-xl px-2 py-1.5 shadow-lg border border-border z-20 max-w-xs">
+                              {COVER_FONTS.map((f) => (
+                                <button
+                                  key={f.name}
+                                  style={{ fontFamily: `"${f.name}", sans-serif` }}
+                                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPages((prev) => {
+                                      const next = [...prev];
+                                      const page = next[currentPageIndex];
+                                      next[currentPageIndex] = {
+                                        ...page,
+                                        textBoxes: (page.textBoxes ?? []).map((t) =>
+                                          t.id === tb.id ? { ...t, font: f.name } : t
+                                        ),
+                                      };
+                                      return next;
+                                    });
+                                  }}
+                                  className={cn(
+                                    "px-2 py-0.5 rounded-lg text-sm transition-colors whitespace-nowrap",
+                                    tb.font === f.name
+                                      ? "bg-yellow/40 text-foreground ring-1 ring-yellow"
+                                      : "text-foreground hover:bg-muted/60"
+                                  )}
+                                >
+                                  {f.label}
+                                </button>
+                              ))}
+                            </div>
+
+                            <div className="border-2 border-dashed border-yellow/60 hover:border-yellow rounded-lg p-1.5 relative">
+                              <input
+                                // eslint-disable-next-line jsx-a11y/no-autofocus
+                                autoFocus={tb.id === newTextBoxId}
+                                value={tb.text}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setPages((prev) => {
+                                    const next = [...prev];
+                                    const page = next[currentPageIndex];
+                                    next[currentPageIndex] = {
+                                      ...page,
+                                      textBoxes: (page.textBoxes ?? []).map((t) =>
+                                        t.id === tb.id ? { ...t, text: val } : t
+                                      ),
+                                    };
+                                    return next;
+                                  });
+                                }}
+                                onFocus={() => setNewTextBoxId(null)}
+                                placeholder="Type here…"
+                                className="bg-transparent border-none outline-none text-white text-xl cursor-text min-w-[80px] [text-shadow:0_1px_4px_rgba(0,0,0,0.7)]"
+                                style={{
+                                  width: Math.max(80, tb.text.length * 14 + 40) + "px",
+                                  fontFamily: tb.font ? `"${tb.font}", sans-serif` : undefined,
+                                }}
+                              />
+                              {/* Delete button */}
+                              <button
+                                className="absolute -top-3 -right-3 w-5 h-5 rounded-full bg-neutral/80 text-white text-[10px] font-bold hidden group-hover:flex items-center justify-center z-10 hover:bg-neutral leading-none"
+                                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPages((prev) => {
+                                    const next = [...prev];
+                                    const page = next[currentPageIndex];
+                                    next[currentPageIndex] = {
+                                      ...page,
+                                      textBoxes: (page.textBoxes ?? []).filter((t) => t.id !== tb.id),
+                                    };
+                                    return next;
+                                  });
+                                }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
             </div>
 
