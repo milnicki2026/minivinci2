@@ -1,15 +1,23 @@
+import { useState, useEffect } from "react";
 import { StoryEditor } from "@/components/StoryEditor";
 import { Button } from "@/components/ui/button";
 import { Home } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { loadUserName } from "@/pages/UserProfile";
 import logo from "@/assets/logo.jpeg";
 
 const Create = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const state = location.state as { story?: string; characters?: string[]; setting?: string; genre?: string } | null;
+  const [userName, setUserName] = useState("");
+
+  useEffect(() => {
+    setUserName(loadUserName());
+  }, []);
+  const state = location.state as { story?: string; characters?: string[]; setting?: string; genre?: string; savedProfile?: { pages: unknown[]; storyTitle: string } } | null;
   const initialStory = state?.story;
   const storySetup = state?.characters ? { characters: state.characters, setting: state.setting!, genre: state.genre! } : undefined;
+  const savedProfile = state?.savedProfile;
 
   return (
     <div className="min-h-screen">
@@ -25,12 +33,18 @@ const Create = () => {
             Home
           </Button>
           <img src={logo} alt="minivinci" className="h-12 md:h-16" />
-          <div className="w-24" /> {/* Spacer for centering */}
+          {userName ? (
+            <p className="text-sm font-semibold text-muted-foreground">
+              Welcome back <span className="text-foreground">{userName}</span> 👋
+            </p>
+          ) : (
+            <div className="w-24" />
+          )}
         </div>
       </header>
 
       {/* Main Story Editor */}
-      <StoryEditor initialStory={initialStory} storySetup={storySetup} />
+      <StoryEditor initialStory={initialStory} storySetup={storySetup} savedProfile={savedProfile} />
     </div>
   );
 };

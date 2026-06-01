@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { saveProfile } from "@/pages/Profiles";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { DrawingCanvas } from "./DrawingCanvas";
 import {
   BookOpen, Palette, ChevronLeft, ChevronRight, ChevronDown, Plus,
-  Eye, Printer, LayoutGrid, X, GripVertical, Star, BookMarked, Type, Layers, Upload, Trash2,
+  Eye, Printer, Save, LayoutGrid, X, GripVertical, Star, BookMarked, Type, Layers, Upload, Trash2, UserRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { generateStamp } from "@/lib/stabilityAI";
@@ -208,15 +210,18 @@ interface StorySetup {
 export const StoryEditor = ({
   initialStory,
   storySetup,
+  savedProfile,
 }: {
   initialStory?: string;
   storySetup?: StorySetup;
+  savedProfile?: { pages: unknown[]; storyTitle: string };
 }) => {
-  const [pages, setPages] = useState<StoryPage[]>([
-    { id: "1", type: "write", text: initialStory || "" },
-  ]);
+  const navigate = useNavigate();
+  const [pages, setPages] = useState<StoryPage[]>(
+    savedProfile ? (savedProfile.pages as StoryPage[]) : [{ id: "1", type: "write", text: initialStory || "" }]
+  );
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
-  const [storyTitle] = useState("My Amazing Story");
+  const [storyTitle, setStoryTitle] = useState(savedProfile?.storyTitle ?? "");
   const [isPreview, setIsPreview] = useState(false);
   const [viewAll, setViewAll] = useState(false);
   const [stamps, setStamps] = useState<Stamp[]>([]);
@@ -332,6 +337,20 @@ export const StoryEditor = ({
     }
     setDragIndex(null);
     setDragOverIndex(null);
+  };
+
+  const handleSave = () => {
+    const id = `profile_${Date.now()}`;
+    saveProfile({
+      id,
+      name: storyTitle || "Untitled Story",
+      savedAt: new Date().toISOString(),
+      storyData: {
+        pages,
+        storyTitle,
+      },
+    });
+    navigate("/profiles");
   };
 
   const handlePrint = () => {
@@ -657,32 +676,73 @@ export const StoryEditor = ({
             {/* Top bar */}
             <div className="flex items-center justify-end mb-6">
               <div className="flex gap-2">
-                <Button
-                  onClick={handlePrint}
-                  variant="outline"
-                  className="rounded-full px-6 border-orange text-orange hover:bg-orange hover:text-white"
-                >
-                  <Printer className="mr-2 h-5 w-5" />
-                  Print
-                </Button>
-                <Button
-                  onClick={() => setIsPreview(true)}
-                  variant="outline"
-                  className="rounded-full px-6 border-primary text-primary hover:bg-primary hover:text-primary-foreground"
-                >
-                  <Eye className="mr-2 h-5 w-5" />
-                  Preview
-                </Button>
+                <div className="relative group">
+                  <Button
+                    onClick={() => navigate("/profile")}
+                    variant="outline"
+                    className="w-10 h-10 rounded-full p-0 border-pink text-pink hover:bg-pink hover:text-white"
+                  >
+                    <UserRound className="h-4 w-4" />
+                  </Button>
+                  <span className="absolute top-full mt-1.5 left-1/2 -translate-x-1/2 text-xs font-semibold bg-foreground/90 text-background rounded-md px-2 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                    Profile
+                  </span>
+                </div>
+                <div className="relative group">
+                  <Button
+                    onClick={handleSave}
+                    variant="outline"
+                    className="w-10 h-10 rounded-full p-0 border-indigo-400 text-indigo-500 hover:bg-indigo-500 hover:text-white"
+                  >
+                    <Save className="h-4 w-4" />
+                  </Button>
+                  <span className="absolute top-full mt-1.5 left-1/2 -translate-x-1/2 text-xs font-semibold bg-foreground/90 text-background rounded-md px-2 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                    Save
+                  </span>
+                </div>
+                <div className="relative group">
+                  <Button
+                    onClick={handlePrint}
+                    variant="outline"
+                    className="w-10 h-10 rounded-full p-0 border-orange text-orange hover:bg-orange hover:text-white"
+                  >
+                    <Printer className="h-4 w-4" />
+                  </Button>
+                  <span className="absolute top-full mt-1.5 left-1/2 -translate-x-1/2 text-xs font-semibold bg-foreground/90 text-background rounded-md px-2 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                    Print
+                  </span>
+                </div>
+                <div className="relative group">
+                  <Button
+                    onClick={() => setIsPreview(true)}
+                    variant="outline"
+                    className="w-10 h-10 rounded-full p-0 border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                  <span className="absolute top-full mt-1.5 left-1/2 -translate-x-1/2 text-xs font-semibold bg-foreground/90 text-background rounded-md px-2 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                    Preview
+                  </span>
+                </div>
               </div>
             </div>
 
             {/* Editor area */}
             <div className="bg-white rounded-3xl shadow-2xl p-6 md:p-8 mb-6">
-              <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground mb-4">
-                <pageMeta.Icon className={cn("h-8 w-8", pageMeta.textColor)} strokeWidth={1.5} />
-                <span className={pageMeta.textColor}>{pageMeta.label}</span>
-                <span>·</span>
-                <span>Page {currentPageIndex + 1} of {pages.length}</span>
+              <div className="flex items-center justify-between gap-4 mb-4">
+                <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground shrink-0">
+                  <pageMeta.Icon className={cn("h-8 w-8", pageMeta.textColor)} strokeWidth={1.5} />
+                  <span className={pageMeta.textColor}>{pageMeta.label}</span>
+                  <span>·</span>
+                  <span>Page {currentPageIndex + 1} of {pages.length}</span>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Story title..."
+                  value={storyTitle}
+                  onChange={(e) => setStoryTitle(e.target.value)}
+                  className="flex-1 min-w-0 text-sm font-semibold bg-transparent border-0 border-b border-dashed border-border/50 focus:border-primary focus:outline-none placeholder:text-muted-foreground/40 text-foreground py-0.5 transition-colors text-right"
+                />
               </div>
               {isWrite ? (
                 <Textarea

@@ -818,22 +818,22 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
           </div>
         </div>
 
-        {/* Stamp Picker */}
-        <AnimalPicker
-          selectedAnimal={selectedAnimal?.name || null}
-          onSelectAnimal={(animal) => {
-            setSelectedAnimal(animal);
-            if (animal) {
-              setIsEraser(false);
-              if (selectMode) { commitFloatingSelection(); setSelectMode(false); }
-            }
-          }}
-          stamps={stamps}
-          loading={stampsLoading}
-        />
-
-        {/* Shape Selector */}
+        {/* Stamps & Shapes grouped */}
         <div className="flex flex-col gap-2">
+          <AnimalPicker
+            selectedAnimal={selectedAnimal?.name || null}
+            onSelectAnimal={(animal) => {
+              setSelectedAnimal(animal);
+              if (animal) {
+                setIsEraser(false);
+                if (selectMode) { commitFloatingSelection(); setSelectMode(false); }
+              }
+            }}
+            stamps={stamps}
+            loading={stampsLoading}
+          />
+
+          {/* Shape Selector */}
           <div className="relative flex justify-center">
             <button
               title={selectedShape ? SHAPES.find(s => s.name === selectedShape)?.label : "Shapes"}
