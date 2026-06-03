@@ -4,11 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Home, Trash2, BookOpen, Plus, ArrowLeft, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import logo from "@/assets/logo.jpeg";
+import { getActiveProfileId } from "@/pages/UserProfile";
 
 export interface SavedProfile {
   id: string;
   name: string;
   savedAt: string;
+  profileId?: string;
   storyData: {
     pages: unknown[];
     storyTitle: string;
@@ -62,7 +64,10 @@ export default function Profiles() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   useEffect(() => {
-    setProfiles(loadProfiles());
+    const activeId = getActiveProfileId();
+    const all = loadProfiles();
+    // Show stories belonging to this profile, or untagged stories (backwards compat)
+    setProfiles(all.filter((p) => !p.profileId || p.profileId === activeId));
   }, []);
 
   const handleDelete = (id: string) => {

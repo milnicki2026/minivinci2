@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { saveProfile } from "@/pages/Profiles";
+import { getActiveProfileId } from "@/pages/UserProfile";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { DrawingCanvas } from "./DrawingCanvas";
 import {
   BookOpen, Palette, ChevronLeft, ChevronRight, ChevronDown, Plus,
   Eye, Printer, Save, LayoutGrid, X, GripVertical, Star, BookMarked, Type, Layers, Upload, Trash2, UserRound,
+  AlignLeft, AlignCenter, AlignRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { generateStamp } from "@/lib/stabilityAI";
@@ -44,6 +46,7 @@ interface StoryPage {
   drawing?: string;
   textBoxes?: TextBox[];
   background?: CoverBackground;
+  textAlign?: "left" | "center" | "right";
 }
 
 // Metadata for every page type — colours, labels, icons
@@ -217,9 +220,24 @@ export const StoryEditor = ({
   savedProfile?: { pages: unknown[]; storyTitle: string };
 }) => {
   const navigate = useNavigate();
-  const [pages, setPages] = useState<StoryPage[]>(
-    savedProfile ? (savedProfile.pages as StoryPage[]) : [{ id: "1", type: "write", text: initialStory || "" }]
-  );
+  const [pages, setPages] = useState<StoryPage[]>(() => {
+    const raw: StoryPage[] = savedProfile
+      ? (savedProfile.pages as StoryPage[])
+      : [{ id: "1", type: "cover", text: "" }, { id: "2", type: "write", text: initialStory || "" }];
+
+    // 1. Exactly one cover at position 0
+    const covers    = raw.filter((p) => p.type === "cover");
+    const nonCovers = raw.filter((p) => p.type !== "cover");
+    const cover     = covers[0] ?? { id: `cover_${Date.now()}`, type: "cover" as const, text: "" };
+
+    // 2. Inside-cover (if present) always at position 1 (left of spread 1)
+    const icIdx      = nonCovers.findIndex((p) => p.type === "inside-cover");
+    const ordered    = icIdx > 0
+      ? [nonCovers[icIdx], ...nonCovers.filter((_, i) => i !== icIdx)]
+      : nonCovers;
+
+    return [cover, ...ordered];
+  });
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [storyTitle, setStoryTitle] = useState(savedProfile?.storyTitle ?? "");
   const [isPreview, setIsPreview] = useState(false);
@@ -272,15 +290,33 @@ export const StoryEditor = ({
     });
   };
 
+  const hasCover          = pages.some((p) => p.type === "cover");
+  const hasInsideCover    = pages.some((p) => p.type === "inside-cover");
+  const hasInsideBack     = pages.some((p) => p.type === "inside-back-cover");
+  const hasBackCover      = pages.some((p) => p.type === "back-cover");
+  const structuralExists  = (t: PageType) =>
+    (t === "cover" && hasCover) ||
+    (t === "inside-cover" && hasInsideCover) ||
+    (t === "inside-back-cover" && hasInsideBack) ||
+    (t === "back-cover" && hasBackCover);
+
   const addPage = (type: PageType) => {
+    // Each structural cover type can only appear once
+    if (structuralExists(type)) return;
     const newPage: StoryPage = {
       id: Date.now().toString(),
       type,
       text: "",
       drawing: undefined,
     };
-    setPages((prev) => [...prev, newPage]);
-    setCurrentPageIndex(pages.length);
+    if (type === "inside-cover") {
+      // Always slot at index 1 — left of spread 1
+      setPages((prev) => { const next = [...prev]; next.splice(1, 0, newPage); return next; });
+      setCurrentPageIndex(1);
+    } else {
+      setPages((prev) => [...prev, newPage]);
+      setCurrentPageIndex(pages.length);
+    }
     setShowAddMenu(false);
   };
 
@@ -324,6 +360,19 @@ export const StoryEditor = ({
       setDragOverIndex(null);
       return;
     }
+    // Cover is always first — block drag/drop at position 0
+    if (dragIndex === 0 || toIndex === 0) {
+      setDragIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+    // Inside-cover is always at index 1 (left of spread 1) — block moving it or into its slot
+    const insideCoverIdx = pages.findIndex((p) => p.type === "inside-cover");
+    if (insideCoverIdx !== -1 && (dragIndex === insideCoverIdx || toIndex === insideCoverIdx)) {
+      setDragIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
     const newPages = [...pages];
     const [dragged] = newPages.splice(dragIndex, 1);
     newPages.splice(toIndex, 0, dragged);
@@ -345,6 +394,7 @@ export const StoryEditor = ({
       id,
       name: storyTitle || "Untitled Story",
       savedAt: new Date().toISOString(),
+      profileId: getActiveProfileId() ?? undefined,
       storyData: {
         pages,
         storyTitle,
@@ -449,18 +499,20 @@ export const StoryEditor = ({
                   </button>
                   {showStructureSection && (
                     <div className="flex flex-col gap-1">
-                      {(["cover", "inside-cover", "inside-back-cover", "back-cover"] as PageType[]).map((t) => {
-                        const m = PAGE_META[t];
-                        return (
-                          <button key={t}
-                            onClick={() => { addPage(t); setViewAll(false); setShowViewAllAddMenu(false); }}
-                            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-neutral/30 bg-white text-foreground hover:bg-muted/40 transition-all focus:outline-none text-left"
-                          >
-                            <m.Icon className="h-3.5 w-3.5 flex-shrink-0 text-orange" />
-                            <span className="text-[10px] font-semibold leading-tight">{m.label}</span>
-                          </button>
-                        );
-                      })}
+                      {(["cover", "inside-cover", "inside-back-cover", "back-cover"] as PageType[])
+                        .filter((t) => !structuralExists(t))
+                        .map((t) => {
+                          const m = PAGE_META[t];
+                          return (
+                            <button key={t}
+                              onClick={() => { addPage(t); setViewAll(false); setShowViewAllAddMenu(false); }}
+                              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-neutral/30 bg-white text-foreground hover:bg-muted/40 transition-all focus:outline-none text-left"
+                            >
+                              <m.Icon className="h-3.5 w-3.5 flex-shrink-0 text-orange" />
+                              <span className="text-[10px] font-semibold leading-tight">{m.label}</span>
+                            </button>
+                          );
+                        })}
                     </div>
                   )}
                 </div>
@@ -665,7 +717,7 @@ export const StoryEditor = ({
   }
 
   // ── Editor ─────────────────────────────────────────────────────
-  const isWrite = currentPage.type === "write";
+  const isWrite = currentPage.type === "write" || currentPage.type === "inside-cover";
   const pageMeta = PAGE_META[currentPage.type];
 
   return (
@@ -676,18 +728,6 @@ export const StoryEditor = ({
             {/* Top bar */}
             <div className="flex items-center justify-end mb-6">
               <div className="flex gap-2">
-                <div className="relative group">
-                  <Button
-                    onClick={() => navigate("/profile")}
-                    variant="outline"
-                    className="w-10 h-10 rounded-full p-0 border-pink text-pink hover:bg-pink hover:text-white"
-                  >
-                    <UserRound className="h-4 w-4" />
-                  </Button>
-                  <span className="absolute top-full mt-1.5 left-1/2 -translate-x-1/2 text-xs font-semibold bg-foreground/90 text-background rounded-md px-2 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                    Profile
-                  </span>
-                </div>
                 <div className="relative group">
                   <Button
                     onClick={handleSave}
@@ -745,12 +785,45 @@ export const StoryEditor = ({
                 />
               </div>
               {isWrite ? (
-                <Textarea
-                  value={currentPage.text}
-                  onChange={(e) => updatePageText(e.target.value)}
-                  placeholder="Once upon a time..."
-                  className="min-h-[400px] text-lg border-2 border-border rounded-2xl resize-none focus-visible:ring-2 focus-visible:ring-teal"
-                />
+                <div className="flex flex-col gap-2">
+                  {/* Alignment toolbar — only for inside cover */}
+                  {currentPage.type === "inside-cover" && (
+                    <div className="flex items-center gap-1">
+                      {([
+                        { align: "left",   Icon: AlignLeft   },
+                        { align: "center", Icon: AlignCenter },
+                        { align: "right",  Icon: AlignRight  },
+                      ] as const).map(({ align, Icon }) => (
+                        <button
+                          key={align}
+                          onClick={() =>
+                            setPages((prev) =>
+                              prev.map((p, i) =>
+                                i === currentPageIndex ? { ...p, textAlign: align } : p
+                              )
+                            )
+                          }
+                          className={cn(
+                            "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                            (currentPage.textAlign ?? "left") === align
+                              ? "bg-teal/10 text-teal"
+                              : "text-muted-foreground hover:text-teal"
+                          )}
+                          title={`Align ${align}`}
+                        >
+                          <Icon className="h-4 w-4" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <Textarea
+                    value={currentPage.text}
+                    onChange={(e) => updatePageText(e.target.value)}
+                    placeholder="Once upon a time..."
+                    style={{ textAlign: currentPage.type === "inside-cover" ? (currentPage.textAlign ?? "left") : undefined }}
+                    className="min-h-[400px] text-lg border-2 border-border rounded-2xl resize-none focus-visible:ring-2 focus-visible:ring-teal"
+                  />
+                </div>
               ) : (
                 <>
                   {/* Cover page toolbar */}
@@ -1178,14 +1251,16 @@ export const StoryEditor = ({
                 ))}
 
                 {/* Add page — split into two small buttons */}
-                <div className="relative">
+                <div className="relative group">
                   <button
                     onClick={() => { setShowAddMenu((v) => !v); setShowStructureSection(false); }}
                     className="w-8 h-8 rounded-full bg-lime hover:bg-lime/90 flex items-center justify-center text-foreground shadow-sm"
-                    title="Add page"
                   >
                     <Plus className="h-4 w-4" />
                   </button>
+                  <span className="absolute top-full mt-1.5 left-1/2 -translate-x-1/2 text-xs font-semibold bg-foreground/90 text-background rounded-md px-2 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                    Add page
+                  </span>
                   {showAddMenu && (
                     <div className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-white rounded-2xl shadow-xl border border-border p-2 flex flex-col gap-0.5 min-w-[190px] z-30">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-3 pt-1 pb-0.5">Story pages</p>
@@ -1209,15 +1284,17 @@ export const StoryEditor = ({
                       </button>
                       {showStructureSection && (
                         <div className="flex flex-col gap-0.5">
-                          {(["cover", "inside-cover", "inside-back-cover", "back-cover"] as PageType[]).map((t) => {
-                            const m = PAGE_META[t];
-                            return (
-                              <button key={t} onClick={() => addPage(t)}
-                                className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border border-neutral/30 bg-white text-foreground hover:bg-muted/40 transition-colors">
-                                <m.Icon className="h-4 w-4 text-orange" />{m.label}
-                              </button>
-                            );
-                          })}
+                          {(["cover", "inside-cover", "inside-back-cover", "back-cover"] as PageType[])
+                            .filter((t) => !structuralExists(t))
+                            .map((t) => {
+                              const m = PAGE_META[t];
+                              return (
+                                <button key={t} onClick={() => addPage(t)}
+                                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border border-neutral/30 bg-white text-foreground hover:bg-muted/40 transition-colors">
+                                  <m.Icon className="h-4 w-4 text-orange" />{m.label}
+                                </button>
+                              );
+                            })}
                         </div>
                       )}
                     </div>
@@ -1225,13 +1302,17 @@ export const StoryEditor = ({
                 </div>
 
                 {/* View all */}
-                <button
-                  onClick={() => setViewAll(true)}
-                  className="w-8 h-8 rounded-full border-2 border-border bg-white hover:border-primary flex items-center justify-center"
-                  title="View all pages"
-                >
-                  <LayoutGrid className="h-4 w-4" />
-                </button>
+                <div className="relative group">
+                  <button
+                    onClick={() => setViewAll(true)}
+                    className="w-8 h-8 rounded-full border-2 border-lime bg-white hover:bg-lime flex items-center justify-center transition-colors"
+                  >
+                    <LayoutGrid className="h-4 w-4 text-lime group-hover:text-foreground transition-colors" />
+                  </button>
+                  <span className="absolute top-full mt-1.5 left-1/2 -translate-x-1/2 text-xs font-semibold bg-foreground/90 text-background rounded-md px-2 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                    View all pages
+                  </span>
+                </div>
               </div>
 
               <Button

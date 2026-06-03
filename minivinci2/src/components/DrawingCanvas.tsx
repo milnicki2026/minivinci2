@@ -81,6 +81,7 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
   const [selectMode, setSelectMode] = useState(false);
   const [selectedShape, setSelectedShape] = useState<ShapeName | null>(null);
   const [showShapePicker, setShowShapePicker] = useState(false);
+  const [eraserPos, setEraserPos] = useState<{ x: number; y: number } | null>(null);
   const [selectionRect, setSelectionRect] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null);
   const [floatingSelection, setFloatingSelection] = useState<{ x: number; y: number; w: number; h: number; dataUrl: string } | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -613,15 +614,33 @@ export const DrawingCanvas = ({ pageId, initialImage, stamps = [], stampsLoading
         <div className="border-4 border-dashed border-primary/30 rounded-2xl p-2 bg-muted/30 flex-1">
           {/* relative wrapper so PhotoPlacer can overlay the canvas exactly */}
           <div className="relative rounded-xl overflow-hidden">
+            {/* Eraser size preview */}
+            {isEraser && eraserPos && (
+              <div
+                className="pointer-events-none absolute rounded-full border-2 border-foreground/50 bg-white/30 z-20"
+                style={{
+                  width:  brushSize * 4,
+                  height: brushSize * 4,
+                  left:   eraserPos.x - brushSize * 2,
+                  top:    eraserPos.y - brushSize * 2,
+                }}
+              />
+            )}
             <canvas
               ref={canvasRef}
               onMouseDown={startDrawing}
               onMouseUp={stopDrawing}
-              onMouseMove={draw}
-              onMouseLeave={stopDrawing}
+              onMouseMove={(e) => {
+                draw(e);
+                if (isEraser) {
+                  const r = canvasRef.current!.getBoundingClientRect();
+                  setEraserPos({ x: e.clientX - r.left, y: e.clientY - r.top });
+                }
+              }}
+              onMouseLeave={() => { stopDrawing(); setEraserPos(null); }}
               className={cn(
                 "w-full block rounded-xl shadow-inner",
-                selectedAnimal ? "cursor-pointer" : selectMode ? "cursor-crosshair" : "cursor-crosshair"
+                isEraser ? "cursor-none" : selectedAnimal ? "cursor-pointer" : selectMode ? "cursor-crosshair" : "cursor-crosshair"
               )}
               style={{
                 touchAction: "none",

@@ -6,14 +6,16 @@ import { cn } from "@/lib/utils";
 import logo from "@/assets/logo.jpeg";
 
 const USER_PROFILES_KEY = "minivinci_user_profiles";
+const LAST_USED_KEY = "minivinci_active_profile_id";   // localStorage — persists
+const SESSION_KEY   = "minivinci_session_profile";      // sessionStorage — clears on browser close
 
-interface UserProfile {
+export interface UserProfile {
   id: string;
   name: string;
   color: string;
 }
 
-function loadUserProfiles(): UserProfile[] {
+export function loadUserProfiles(): UserProfile[] {
   try {
     const stored = JSON.parse(localStorage.getItem(USER_PROFILES_KEY) || "[]");
     if (Array.isArray(stored) && stored.length > 0) return stored;
@@ -27,16 +29,36 @@ function loadUserProfiles(): UserProfile[] {
   }
 }
 
-function saveUserProfiles(profiles: UserProfile[]) {
+export function saveUserProfiles(profiles: UserProfile[]) {
   localStorage.setItem(USER_PROFILES_KEY, JSON.stringify(profiles));
 }
 
-// Kept for external compatibility
-export function loadUserName(): string {
-  return loadUserProfiles()[0]?.name || "";
+// Logged-in session (clears when browser closes)
+export function getActiveProfileId(): string | null {
+  return sessionStorage.getItem(SESSION_KEY);
 }
 
-const COLORS = [
+// Called on ProfileSelect when the user taps a profile card ("log in")
+export function setActiveProfileId(id: string) {
+  sessionStorage.setItem(SESSION_KEY, id);
+  localStorage.setItem(LAST_USED_KEY, id); // remember for next visit's default selection
+}
+
+// Returns the last-used profile ID even before a new session is established
+export function getLastUsedProfileId(): string | null {
+  return sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(LAST_USED_KEY);
+}
+
+// Returns the active profile's name (for welcome message, etc.)
+export function loadUserName(): string {
+  const profiles = loadUserProfiles();
+  if (!profiles.length) return "";
+  const activeId = getActiveProfileId();
+  const active = profiles.find((p) => p.id === activeId) ?? profiles[0];
+  return active.name || "";
+}
+
+export const COLORS = [
   { label: "Pink",   bg: "bg-pink/20",    border: "border-pink/50",    icon: "text-pink",       value: "pink"   },
   { label: "Teal",   bg: "bg-teal/20",    border: "border-teal/50",    icon: "text-teal",       value: "teal"   },
   { label: "Yellow", bg: "bg-yellow/20",  border: "border-yellow/50",  icon: "text-yellow",     value: "yellow" },
@@ -65,9 +87,11 @@ export default function UserProfilePage() {
     const loaded = loadUserProfiles();
     setProfiles(loaded);
     if (loaded.length > 0) {
-      setActiveId(loaded[0].id);
-      setEditName(loaded[0].name);
-      setEditColor(loaded[0].color);
+      const savedActiveId = getLastUsedProfileId();
+      const initial = loaded.find((p) => p.id === savedActiveId) ?? loaded[0];
+      setActiveId(initial.id);
+      setEditName(initial.name);
+      setEditColor(initial.color);
     } else {
       // Start with one empty profile
       const id = `profile_${Date.now()}`;
@@ -94,6 +118,7 @@ export default function UserProfilePage() {
     setEditColor(profile.color);
     setSaved(false);
     setShowColorPicker(false);
+    setActiveProfileId(profile.id);
   };
 
   const handleAddProfile = () => {
@@ -146,79 +171,54 @@ export default function UserProfilePage() {
 
       <div className="max-w-md mx-auto px-4 py-16 flex flex-col items-center gap-8">
 
-        {/* Avatar row */}
-        <div className="flex gap-6 flex-wrap justify-center">
-          {profiles.map((profile) => {
-            const isActive = profile.id === activeId;
-            const meta = avatarStyle(profile, isActive);
-            const isSaved = !!profile.name;
-
-            return (
-              <div key={profile.id} className="flex flex-col items-center gap-1.5">
-                <div className="relative" ref={isActive ? pickerRef : undefined}>
-                  {/* Avatar button */}
-                  <button
-                    onClick={() => handleSelectProfile(profile)}
-                    className={cn(
-                      "w-20 h-20 rounded-full border-4 flex items-center justify-center transition-all",
-                      meta ? meta.bg : GREY.bg,
-                      meta ? meta.border : GREY.border,
-                      isActive && "ring-2 ring-offset-2 ring-foreground/20"
-                    )}
-                  >
-                    <UserRound
-                      className={cn("h-10 w-10 transition-colors", meta ? meta.icon : GREY.icon)}
-                      strokeWidth={1.5}
-                    />
-                  </button>
-
-                  {/* Pen button — only on active */}
-                  {isActive && (
-                    <button
-                      onClick={() => setShowColorPicker((v) => !v)}
-                      className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-white border-2 border-border shadow-sm flex items-center justify-center hover:border-primary hover:bg-muted transition-all"
-                      title="Choose colour"
-                    >
-                      <Pencil className="h-2.5 w-2.5 text-muted-foreground" />
-                    </button>
-                  )}
-
-                  {/* Colour picker popover */}
-                  {isActive && showColorPicker && (
-                    <div className="absolute top-full mt-3 left-1/2 -translate-x-1/2 bg-white rounded-2xl shadow-xl border border-border p-3 z-50 flex gap-2">
-                      {COLORS.map((c) => (
-                        <button
-                          key={c.value}
-                          title={c.label}
-                          onClick={() => { setEditColor(c.value); setShowColorPicker(false); }}
-                          className={cn(
-                            "w-7 h-7 rounded-full border-2 transition-all hover:scale-110",
-                            c.bg,
-                            editColor === c.value ? "border-foreground scale-110" : c.border
-                          )}
-                        />
-                      ))}
-                    </div>
-                  )}
+        {/* Active profile avatar only */}
+        {(() => {
+          const activeProfile = profiles.find((p) => p.id === activeId);
+          const meta = activeProfile ? avatarStyle(activeProfile, true) : null;
+          return (
+            <div className="flex flex-col items-center gap-2">
+              <div className="relative" ref={pickerRef}>
+                <div className={cn(
+                  "w-24 h-24 rounded-full border-4 flex items-center justify-center",
+                  meta ? meta.bg : GREY.bg,
+                  meta ? meta.border : GREY.border
+                )}>
+                  <UserRound className={cn("h-12 w-12", meta ? meta.icon : GREY.icon)} strokeWidth={1.5} />
                 </div>
-
-                {/* Name — only show once saved */}
-                {isSaved && (
-                  <p className="text-sm font-semibold text-foreground">{profile.name}</p>
+                <button
+                  onClick={() => setShowColorPicker((v) => !v)}
+                  className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-white border-2 border-border shadow-sm flex items-center justify-center hover:border-primary hover:bg-muted transition-all"
+                  title="Choose colour"
+                >
+                  <Pencil className="h-3 w-3 text-muted-foreground" />
+                </button>
+                {showColorPicker && (
+                  <div className="absolute top-full mt-3 left-1/2 -translate-x-1/2 bg-white rounded-2xl shadow-xl border border-border p-3 z-50 flex gap-2">
+                    {COLORS.map((c) => (
+                      <button
+                        key={c.value}
+                        title={c.label}
+                        onClick={() => { setEditColor(c.value); setShowColorPicker(false); }}
+                        className={cn(
+                          "w-7 h-7 rounded-full border-2 transition-all hover:scale-110",
+                          c.bg,
+                          editColor === c.value ? "border-foreground scale-110" : c.border
+                        )}
+                      />
+                    ))}
+                  </div>
                 )}
               </div>
-            );
-          })}
-        </div>
+              {activeProfile?.name && (
+                <p className="text-base font-bold text-foreground">{activeProfile.name}</p>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Card */}
         <div className="w-full bg-white rounded-3xl shadow-md border border-border p-8 flex flex-col gap-6">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-foreground">Who's creating?</h1>
-            <p className="text-sm text-muted-foreground mt-1">We'll keep all your sweet stories in one spot!</p>
-          </div>
-
-          {/* One input per profile, only active one is shown */}
+          {/* Editable name field */}
           <div className="flex flex-col gap-2">
             <label className="text-sm font-semibold text-foreground" htmlFor="user-name">
               Your name
@@ -236,14 +236,7 @@ export default function UserProfilePage() {
             />
           </div>
 
-          <div className="flex items-center justify-between">
-            <button
-              onClick={handleAddProfile}
-              className="flex items-center gap-1 text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add profile
-            </button>
+          <div className="flex justify-end">
             <Button
               onClick={handleSave}
               disabled={!editName.trim()}
