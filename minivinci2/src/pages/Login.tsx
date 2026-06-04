@@ -1,96 +1,84 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Eye, EyeOff, LogIn } from "lucide-react";
+import { Eye, EyeOff, LogIn, UserPlus, Check, X } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 import logo from "@/assets/logo.jpeg";
 
-const ACCOUNT_KEY      = "minivinci_account";       // { email, password } — the stored account
-const SAVED_LOGIN_KEY  = "minivinci_saved_login";   // { email, password } — auto-fill / auto-login
-const SESSION_AUTH_KEY = "minivinci_authenticated"; // sessionStorage — clears on browser close
+const PASSWORD_RULES = [
+  { label: "At least 8 characters",       test: (p: string) => p.length >= 8             },
+  { label: "At least 1 uppercase letter",  test: (p: string) => /[A-Z]/.test(p)           },
+  { label: "At least 1 lowercase letter",  test: (p: string) => /[a-z]/.test(p)           },
+  { label: "At least 1 number",            test: (p: string) => /[0-9]/.test(p)           },
+  { label: "At least 1 special character", test: (p: string) => /[^A-Za-z0-9]/.test(p)   },
+];
 
-interface Credentials { email: string; password: string; }
-
-function getAccount(): Credentials | null {
-  try { return JSON.parse(localStorage.getItem(ACCOUNT_KEY) || "null"); } catch { return null; }
-}
-
-function getSavedLogin(): Credentials | null {
-  try { return JSON.parse(localStorage.getItem(SAVED_LOGIN_KEY) || "null"); } catch { return null; }
-}
-
-export function isAuthenticated(): boolean {
-  return sessionStorage.getItem(SESSION_AUTH_KEY) === "true";
-}
-
-export function setAuthenticated() {
-  sessionStorage.setItem(SESSION_AUTH_KEY, "true");
+function friendlyError(msg: string): string {
+  if (msg.includes("fetch") || msg.includes("network") || msg.includes("connect"))
+    return "Could not connect to the server. Please check your internet connection and try again.";
+  if (msg.includes("Invalid login credentials"))
+    return "Incorrect email or password. Please try again.";
+  if (msg.includes("Email not confirmed"))
+    return "Please verify your email before logging in.";
+  if (msg.includes("already registered") || msg.includes("already been registered"))
+    return "An account with this email already exists. Try logging in instead.";
+  return msg;
 }
 
 export default function Login() {
   const navigate = useNavigate();
+  const [mode, setMode] = useState<"login" | "create">(() => "login");
+
   const [email, setEmail]               = useState("");
   const [password, setPassword]         = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [savePassword, setSavePassword] = useState(false);
   const [error, setError]               = useState("");
-  const [isFirstTime, setIsFirstTime]   = useState(false);
+  const [loading, setLoading]           = useState(false);
 
-  useEffect(() => {
-    // If already authenticated this session, skip straight to profile select
-    if (isAuthenticated()) {
-      navigate("/select-profile", { replace: true });
-      return;
-    }
+  const passwordValid = PASSWORD_RULES.every((r) => r.test(password));
 
-    const saved   = getSavedLogin();
-    const account = getAccount();
-
-    // Auto-login if saved credentials match stored account
-    if (saved && account && saved.email === account.email && saved.password === account.password) {
-      setAuthenticated();
-      navigate("/select-profile", { replace: true });
-      return;
-    }
-
-    setIsFirstTime(!account);
-
-    // Pre-fill fields if credentials were saved
-    if (saved) {
-      setEmail(saved.email);
-      setPassword(saved.password);
-      setSavePassword(true);
-    }
-  }, []);
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
-    const trimmedEmail = email.trim().toLowerCase();
-    const account = getAccount();
 
-    if (!account) {
-      // First time — create the account
-      const newAccount: Credentials = { email: trimmedEmail, password };
-      localStorage.setItem(ACCOUNT_KEY, JSON.stringify(newAccount));
-      if (savePassword) {
-        localStorage.setItem(SAVED_LOGIN_KEY, JSON.stringify(newAccount));
-      }
-      setAuthenticated();
-      navigate("/select-profile", { replace: true });
-    } else {
-      // Verify credentials
-      if (trimmedEmail !== account.email || password !== account.password) {
-        setError("Incorrect email or password. Please try again.");
-        return;
-      }
-      if (savePassword) {
-        localStorage.setItem(SAVED_LOGIN_KEY, JSON.stringify({ email: trimmedEmail, password }));
-      } else {
-        localStorage.removeItem(SAVED_LOGIN_KEY);
-      }
-      setAuthenticated();
-      navigate("/select-profile", { replace: true });
+    const data = new FormData(e.currentTarget);
+    const resolvedEmail    = ((data.get("email")    as string) || email).trim().toLowerCase();
+    const resolvedPassword = ((data.get("password") as string) || password);
+
+    // Client-side password rules (create mode only)
+    if (mode === "create" && !PASSWORD_RULES.every((r) => r.test(resolvedPassword))) {
+      setError("Please make sure your password meets all the requirements below.");
+      return;
     }
+
+    setLoading(true);
+
+    if (mode === "create") {
+      const { error } = await supabase.auth.signUp({
+        email:    resolvedEmail,
+        password: resolvedPassword,
+        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      });
+      if (error) {
+        setError(friendlyError(error.message));
+      } else {
+        navigate("/verify-email");
+      }
+    } else {
+      const { data: authData, error } = await supabase.auth.signInWithPassword({
+        email:    resolvedEmail,
+        password: resolvedPassword,
+      });
+      if (error) {
+        setError(friendlyError(error.message));
+      } else if (authData.user && !authData.user.email_confirmed_at) {
+        navigate("/verify-email");
+      } else {
+        navigate("/select-profile", { replace: true });
+      }
+    }
+
+    setLoading(false);
   };
 
   return (
@@ -106,9 +94,11 @@ export default function Login() {
       {/* Card */}
       <div className="relative z-10 w-full max-w-sm bg-white rounded-3xl shadow-xl border border-border p-8 flex flex-col gap-6">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-foreground">Welcome!</h1>
+          <h1 className="text-2xl font-bold text-foreground">
+            {mode === "create" ? "Create your account" : "Welcome back!"}
+          </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {isFirstTime
+            {mode === "create"
               ? "Set up your minivinci account to get started."
               : "Log in to continue creating."}
           </p>
@@ -122,7 +112,9 @@ export default function Login() {
             </label>
             <input
               id="email"
+              name="email"
               type="email"
+              autoComplete="email"
               placeholder="you@example.com"
               value={email}
               onChange={(e) => { setEmail(e.target.value); setError(""); }}
@@ -140,11 +132,14 @@ export default function Login() {
             <div className="relative">
               <input
                 id="password"
+                name="password"
                 type={showPassword ? "text" : "password"}
+                autoComplete={mode === "create" ? "new-password" : "current-password"}
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => { setPassword(e.target.value); setError(""); }}
                 required
+                minLength={6}
                 className="w-full rounded-2xl border border-border bg-muted/40 px-4 py-3 pr-11 text-sm font-medium focus:outline-none focus:border-teal focus:ring-2 focus:ring-teal/20 transition-all placeholder:text-muted-foreground/40"
               />
               <button
@@ -155,20 +150,23 @@ export default function Login() {
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
+            {/* Password requirements checklist — create mode only */}
+            {mode === "create" && password.length > 0 && (
+              <ul className="mt-1.5 flex flex-col gap-1 pl-1">
+                {PASSWORD_RULES.map((rule) => {
+                  const ok = rule.test(password);
+                  return (
+                    <li key={rule.label} className={`flex items-center gap-1.5 text-xs transition-colors ${ok ? "text-teal" : "text-muted-foreground"}`}>
+                      {ok ? <Check className="h-3 w-3 shrink-0" /> : <X className="h-3 w-3 shrink-0" />}
+                      {rule.label}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
 
-          {/* Save password */}
-          <label className="flex items-center gap-2.5 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={savePassword}
-              onChange={(e) => setSavePassword(e.target.checked)}
-              className="w-4 h-4 rounded accent-teal cursor-pointer"
-            />
-            <span className="text-sm text-muted-foreground">Save password</span>
-          </label>
-
-          {/* Error message */}
+          {/* Error */}
           {error && (
             <p className="text-sm text-destructive font-medium text-center -mt-1">{error}</p>
           )}
@@ -176,12 +174,51 @@ export default function Login() {
           {/* Submit */}
           <Button
             type="submit"
-            disabled={!email.trim() || !password}
+            disabled={!email.trim() || !password || loading || (mode === "create" && !passwordValid)}
             className="w-full rounded-full h-11 bg-teal hover:bg-teal/90 text-white font-semibold text-base gap-2 mt-1"
           >
-            <LogIn className="h-4 w-4" />
-            {isFirstTime ? "Get started" : "Log in"}
+            {loading ? (
+              <span className="flex items-center gap-2">
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+                {mode === "create" ? "Creating account…" : "Logging in…"}
+              </span>
+            ) : (
+              <>
+                {mode === "create" ? <UserPlus className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
+                {mode === "create" ? "Create account" : "Log in"}
+              </>
+            )}
           </Button>
+
+          {/* Toggle */}
+          <p className="text-center text-sm text-muted-foreground">
+            {mode === "create" ? (
+              <>
+                Already have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => { setMode("login"); setError(""); }}
+                  className="font-semibold text-teal hover:underline"
+                >
+                  Log in
+                </button>
+              </>
+            ) : (
+              <>
+                New here?{" "}
+                <button
+                  type="button"
+                  onClick={() => { setMode("create"); setError(""); }}
+                  className="font-semibold text-teal hover:underline"
+                >
+                  Create an account
+                </button>
+              </>
+            )}
+          </p>
         </form>
       </div>
     </div>
