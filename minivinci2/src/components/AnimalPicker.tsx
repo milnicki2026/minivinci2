@@ -21,7 +21,7 @@ export const AnimalPicker = ({
 }: StampPickerProps) => {
   return (
     <div className="flex flex-col gap-3">
-      <span className="text-sm font-semibold text-center">Stamps</span>
+      <span className="text-sm font-semibold text-center">Stamps & Shapes</span>
       {loading ? (
         <div className="grid grid-cols-4 gap-2">
           {Array.from({ length: 9 }).map((_, i) => (

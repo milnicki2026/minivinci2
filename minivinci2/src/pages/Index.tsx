@@ -1,7 +1,7 @@
-import Welcome from "./Welcome";
+import Login from "./Login";
 
 const Index = () => {
-  return <Welcome />;
+  return <Login />;
 };
 
 export default Index;
